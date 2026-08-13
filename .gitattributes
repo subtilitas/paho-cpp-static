@@ -1,0 +1,29 @@
+# Line endings are a property of this repository, not of whoever cloned it.
+#
+# Git for Windows sets core.autocrlf=true in its system config; most other
+# installs leave it unset. Without this file, what gets stored in a blob depends
+# on which of those checked it in, and `git status` can report every line of an
+# untouched file as changed. Pinning it here takes the question away from
+# individual developer configuration.
+#
+# eol=lf rather than plain text=auto, because LF is wanted in the working tree
+# as well: CI runs shell scripts on Linux and macOS, and on Windows every tool
+# this project needs -- MSVC, CMake, Git Bash, any usable editor -- reads LF
+# without complaint.
+
+* text=auto eol=lf
+
+# Files that must be delivered byte for byte, whatever their extension suggests.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.bin binary
+*.der binary
+*.p12 binary
+*.a   binary
+*.lib binary
+*.o   binary
+*.obj binary
+*.exe binary
