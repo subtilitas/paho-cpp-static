@@ -6,6 +6,7 @@ project(paho-cpp-static VERSION 0.1.0 LANGUAGES CXX
 # Options
 #-------------------------------------------------------------------------------
 option(MQTT_BUILD_TESTS    "Build the unit tests"           ON)
+option(MQTT_BUILD_EXAMPLES "Build the host examples"        ON)
 option(MQTT_NO_EXCEPTIONS  "Compile with -fno-exceptions"   ON)
 option(MQTT_NO_RTTI        "Compile with -fno-rtti"         ON)
 option(MQTT_WERROR         "Treat warnings as errors"       OFF)
@@ -87,11 +88,15 @@ else()
 endif()
 
 #-------------------------------------------------------------------------------
-# Tests
+# Tests and examples
 #-------------------------------------------------------------------------------
 if(MQTT_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+if(MQTT_BUILD_EXAMPLES AND UNIX)
+    add_subdirectory(examples)
 endif()
 
 #-------------------------------------------------------------------------------
