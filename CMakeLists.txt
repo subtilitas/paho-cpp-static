@@ -5,12 +5,19 @@ project(paho-cpp-static VERSION 0.1.0 LANGUAGES CXX
 #-------------------------------------------------------------------------------
 # Options
 #-------------------------------------------------------------------------------
+option(MQTT_BUILD_TESTS    "Build the unit tests"           ON)
 option(MQTT_NO_EXCEPTIONS  "Compile with -fno-exceptions"   ON)
 option(MQTT_NO_RTTI        "Compile with -fno-rtti"         ON)
 option(MQTT_WERROR         "Treat warnings as errors"       OFF)
 
 set(MQTT_ETL_DIR "" CACHE PATH
     "Path to an Embedded Template Library checkout. If empty, ETL is fetched.")
+
+# Treat this as a subproject when someone add_subdirectory()s us.
+if(NOT CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+    set(MQTT_BUILD_TESTS OFF)
+    set(MQTT_BUILD_EXAMPLES OFF)
+endif()
 
 #-------------------------------------------------------------------------------
 # Embedded Template Library
@@ -77,6 +84,14 @@ else()
     if(MQTT_WERROR)
         target_compile_options(paho_cpp_static PRIVATE /WX)
     endif()
+endif()
+
+#-------------------------------------------------------------------------------
+# Tests
+#-------------------------------------------------------------------------------
+if(MQTT_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
 #-------------------------------------------------------------------------------
