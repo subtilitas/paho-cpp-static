@@ -1,0 +1,30 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+_deps/
+
+# Compiled artefacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.gcda
+*.gcno
+*.map
+
+# Editors and tooling
+.vscode/
+.idea/
+.cache/
+compile_commands.json
+*.swp
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
