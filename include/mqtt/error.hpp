@@ -10,6 +10,34 @@
 
 #include <etl/utility.h>
 
+//------------------------------------------------------------------------------
+// Build policy assertions
+//
+// The build system asks for exceptions and RTTI to be switched off, but the
+// flags that do it differ per compiler and are easy to get wrong -- MSVC needs
+// /EHsc removed rather than a flag added, and a typo there fails silently,
+// leaving a library that quietly contradicts its own documentation.
+//
+// So the request is passed down as MQTT_REQUIRE_NO_* and checked here against
+// what the compiler actually did. A mismatch is a build error, not a surprise
+// discovered later in a linker map.
+//------------------------------------------------------------------------------
+
+#if defined(MQTT_REQUIRE_NO_EXCEPTIONS)
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+#error "Exceptions are enabled, but this build asked for them to be off. \
+On MSVC that usually means /EHsc survived in CMAKE_CXX_FLAGS. \
+Set MQTT_NO_EXCEPTIONS=OFF if you intend to build with exceptions."
+#endif
+#endif
+
+#if defined(MQTT_REQUIRE_NO_RTTI)
+#if defined(__cpp_rtti) || defined(__GXX_RTTI) || defined(_CPPRTTI)
+#error "RTTI is enabled, but this build asked for it to be off. \
+Set MQTT_NO_RTTI=OFF if you intend to build with RTTI."
+#endif
+#endif
+
 namespace mqtt {
 
 /// Every fallible operation in this library reports failure through this enum.
