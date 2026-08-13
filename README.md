@@ -3,7 +3,7 @@
 A minimal MQTT 3.1.1 client in C++17 for targets that cannot afford a heap at
 run time.
 
-[![CI](https://github.com/derjuwi/paho-cpp-static/actions/workflows/ci.yml/badge.svg)](https://github.com/derjuwi/paho-cpp-static/actions/workflows/ci.yml)
+[![CI](https://github.com/subtilitas/paho-cpp-static/actions/workflows/ci.yml/badge.svg)](https://github.com/subtilitas/paho-cpp-static/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 - **No allocation after construction.** Every buffer and table is a member array
@@ -26,7 +26,7 @@ end.
 ## Quick start
 
 ```bash
-git clone https://github.com/derjuwi/paho-cpp-static.git
+git clone https://github.com/subtilitas/paho-cpp-static.git
 cd paho-cpp-static
 cmake -S . -B build            # fetches ETL; or pass -DMQTT_ETL_DIR=/path/to/etl
 cmake --build build
@@ -113,9 +113,15 @@ Never block; return `Error::WouldBlock` when you made no progress; partial
 transfers are expected and handled. TLS needs no support from the MQTT layer —
 do the handshake inside `connect()`, returning `WouldBlock` until it completes.
 
-`examples/posix_transport.hpp` is a working BSD-socket implementation;
-`examples/tls_transport.hpp` is the same shape around mbedTLS. See
-[docs/porting.md](docs/porting.md) for lwIP, Zephyr, FreeRTOS+TCP and
+Three worked transports ship in `examples/`:
+
+| Header | What it does |
+|---|---|
+| `posix_transport.hpp` | BSD sockets with `getaddrinfo`, so it takes a hostname |
+| `tcp_ip_transport.hpp` | fixed IPv4 address, no DNS and no resolver — closest to a shipped device |
+| `tls_transport.hpp` | the same interface around mbedTLS |
+
+See [docs/porting.md](docs/porting.md) for lwIP, Zephyr, FreeRTOS+TCP and
 AT-command modem notes.
 
 ## Memory
@@ -226,7 +232,7 @@ include/mqtt/
   client.hpp       the state machine
 src/               non-template implementations
 tests/             harness, fakes, broker simulator, suites
-examples/          POSIX transport, mbedTLS transport, two host demos
+examples/          three transports (hostname, fixed IPv4, mbedTLS) and demos
 docs/              architecture, porting, configuration, comparison
 ```
 
