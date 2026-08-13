@@ -180,6 +180,28 @@ development on a host. On Windows, the same structure works with Winsock:
 `ioctlsocket(FIONBIO)` for non-blocking, `WSAGetLastError() == WSAEWOULDBLOCK`
 for the block condition.
 
+### Fixed IPv4 address, no resolver
+
+`examples/tcp_ip_transport.hpp` is the version worth reading before you port,
+because it is the shape most devices actually ship. It drops `getaddrinfo`
+entirely and fills a `sockaddr_in` from four octets, which matters because a
+resolver is frequently absent on an embedded stack, and where it exists it
+allocates and blocks.
+
+Its `parse_ipv4()` is `constexpr` and hand-rolled rather than `inet_pton()`, so
+a compiled-in broker address is validated at build time:
+
+```cpp
+constexpr example::Ipv4 kBroker = example::ipv4("192.168.1.50");
+static_assert(kBroker.octets[0] == 192, "broker address failed to parse");
+```
+
+Porting it to lwIP is close to mechanical: `sockaddr_in` becomes `ip4_addr_t`,
+the socket calls become their `lwip_` equivalents, and the `poll()` for connect
+completion becomes `lwip_poll` or a netconn callback. If you resolve a hostname
+once at startup and cache the address, this is the transport you want at
+run time.
+
 ## TLS
 
 TLS requires no support from the MQTT layer. It is a `Transport` like any other:

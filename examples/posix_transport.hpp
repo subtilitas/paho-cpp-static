@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 #include "mqtt/transport.hpp"
+#include "posix_clock.hpp"   // example::PosixClock
 
 namespace example {
 
@@ -180,19 +181,6 @@ private:
     uint16_t    port_      = 0;
     int         fd_        = -1;
     bool        connected_ = false;
-};
-
-/// Monotonic millisecond clock from CLOCK_MONOTONIC.
-class PosixClock final : public mqtt::Clock
-{
-public:
-    uint32_t now_ms() const noexcept override
-    {
-        timespec ts{};
-        ::clock_gettime(CLOCK_MONOTONIC, &ts);
-        return static_cast<uint32_t>(static_cast<uint64_t>(ts.tv_sec) * 1000ull +
-                                     static_cast<uint64_t>(ts.tv_nsec) / 1000000ull);
-    }
 };
 
 } // namespace example
