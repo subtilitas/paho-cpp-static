@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Linux / GCC",    os: ubuntu-latest,  cc: gcc,   cxx: g++ }
+          - { name: "Linux / Clang",  os: ubuntu-latest,  cc: clang, cxx: clang++ }
+          - { name: "macOS / Clang",  os: macos-latest,   cc: clang, cxx: clang++ }
+          - { name: "Windows / MSVC", os: windows-latest }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+  sanitizers:
+    name: Sanitizers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure with ASan and UBSan
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMQTT_BUILD_EXAMPLES=OFF \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # The zero-allocation suite replaces global operator new, which conflicts
+      # with ASan's own allocator interception, so it is excluded here. It runs
+      # in the plain build above.
+      - name: Test
+        env:
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build --output-on-failure -E no_alloc
+
+  interop:
+    name: Mosquitto interop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Mosquitto
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mosquitto mosquitto-clients
+
+      - name: Start broker
+        run: |
+          printf 'listener 1883 127.0.0.1\nallow_anonymous true\n' > mosq.conf
+          mosquitto -c mosq.conf -v > mosq.log 2>&1 &
+          sleep 2
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+
+      - name: Publish and subscribe against a real broker
+        run: ./build/examples/pubsub_demo 127.0.0.1 1883 ci/interop
+
+      - name: Fail on broker-side protocol errors
+        run: |
+          if grep -iE 'malformed|protocol error|invalid' mosq.log; then
+            echo "broker reported a protocol error"
+            exit 1
+          fi
+          echo "no protocol errors logged"
+
+      - name: Upload broker log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mosquitto-log
+          path: mosq.log
