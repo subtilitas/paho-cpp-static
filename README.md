@@ -9,7 +9,11 @@ run time.
 - **No allocation after construction.** Every buffer and table is a member array
   sized by a compile-time config. `sizeof(Client<Cfg>)` is the entire cost.
 - **No exceptions, no RTTI.** Builds and links clean under `-fno-exceptions
-  -fno-rtti`. Every failure path returns an `mqtt::Error`.
+  -fno-rtti` on GCC and Clang, and with `/EHsc` and `/GR` removed plus
+  `_HAS_EXCEPTIONS=0` on MSVC. A `#error` in `error.hpp` checks the compiler's
+  own `__cpp_exceptions` / `_CPPUNWIND`, so a flag that fails to take effect is
+  a build failure rather than a quietly broken promise. Every failure path
+  returns an `mqtt::Error`.
 - **No OS dependency.** No threads, no mutexes, no sockets, no `<chrono>`. You
   implement two small interfaces; the client never blocks.
 - **C++ throughout**, so there is no C wrapper to write and no `void*` context
