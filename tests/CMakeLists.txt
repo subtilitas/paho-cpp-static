@@ -6,7 +6,8 @@ add_executable(mqtt_tests
     test_main.cpp
     test_packet.cpp
     test_codec.cpp
-    test_topic.cpp)
+    test_topic.cpp
+    test_client.cpp)
 
 target_link_libraries(mqtt_tests PRIVATE paho_cpp_static)
 target_include_directories(mqtt_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
