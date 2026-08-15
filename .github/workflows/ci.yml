@@ -20,7 +20,7 @@ jobs:
           - { name: "Windows / MSVC", os: windows-latest }
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure
         env:
@@ -38,7 +38,7 @@ jobs:
     name: Sanitizers
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure with ASan and UBSan
         run: |
@@ -63,7 +63,7 @@ jobs:
     name: Mosquitto interop
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Mosquitto
         run: |
@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload broker log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mosquitto-log
           path: mosq.log
