@@ -22,8 +22,9 @@ run time.
   using `etl::byte_stream_writer` / `etl::byte_stream_reader`, which report
   overruns as `bool` / `etl::optional` rather than throwing.
 
-Roughly 2 400 lines of library, 9 KB of flash, and 1.3 KB of RAM at the small
-end.
+Roughly 2 400 lines of library, and about 1 KB of RAM at the small end. Flash
+and RAM figures are measured on every push — see
+[Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint).
 
 ---
 
@@ -130,16 +131,20 @@ AT-command modem notes.
 
 ## Memory
 
-| Configuration | `sizeof(Client<Cfg>)` |
+| Profile | `sizeof(Client<Cfg>)` |
 |---|---|
-| 256 B buffers, 1 inflight, 2 subscriptions | 1 312 B |
-| `DefaultConfig` | 4 608 B |
-| 4 KB buffers, 16 inflight, 32 subscriptions | 21 136 B |
+| Sensor — QoS 0 only, 256 B buffers | ~1.0 KB |
+| `DefaultConfig` | ~4.6 KB |
+| Gateway — 4 KB buffers, 16 inflight, 32 subs | ~23 KB |
 
-Code is about 5.5 KB for the non-template core plus ~3.5 KB for a
-fully-exercised `Client<Cfg>` instantiation — call it 9 KB of text when every
-API is used, less when the linker drops what you do not call. Figures are
-x86-64 GCC 13 at `-Os` and are indicative rather than a promise for Cortex-M.
+Flash is roughly 6.9 KB for the non-template core, plus about 9 KB for a
+`Client<Cfg>` instantiation that touches every public entry point — considerably
+less in a real application, since the linker drops what you never call.
+
+These are x86-64 GCC at `-Os` and indicative rather than a promise for
+Cortex-M. Exact figures are **remeasured on every push** and published to
+[Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint),
+which is the number to trust if this table and that page ever disagree.
 
 The one deliberate trade-off: each inflight QoS > 0 slot owns a
 `max_persisted_msg_size` buffer holding the serialized packet, so retransmission
@@ -215,8 +220,19 @@ Also verified:
 
 ## Documentation
 
+The [wiki](https://github.com/subtilitas/paho-cpp-static/wiki) is the rendered
+version of everything below, rebuilt by CI on every push. It also carries three
+pages that are *generated from the source* rather than written by hand:
+[API reference](https://github.com/subtilitas/paho-cpp-static/wiki/API-Reference)
+from the header comments,
+[Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint)
+from compiling and measuring, and
+[Test inventory](https://github.com/subtilitas/paho-cpp-static/wiki/Test-Inventory)
+from the suite itself — so none of them can quietly drift out of date.
+
 | Document | Contents |
 |---|---|
+| [docs/getting-started.md](docs/getting-started.md) | build, run against a broker, write your first program |
 | [docs/architecture.md](docs/architecture.md) | layering, state machine, buffers, ownership rules, where the allocations went |
 | [docs/porting.md](docs/porting.md) | implementing `Transport` and `Clock`, platform notes, TLS, how to verify a port |
 | [docs/configuration.md](docs/configuration.md) | every config knob, sizing guidance, worked profiles |
