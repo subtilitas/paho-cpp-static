@@ -75,18 +75,54 @@ namespace detail {
 constexpr size_t at_least_one(size_t n) noexcept { return (n > 0) ? n : 1; }
 } // namespace detail
 
+/// A single-threaded MQTT 3.1.1 client that allocates nothing after
+/// construction.
+///
+/// Every buffer and table is a member array sized from @p Cfg, so
+/// `sizeof(Client<Cfg>)` is the complete RAM cost and an instance can live in
+/// `.bss` on a target with no heap linked at all. Drive it by calling step()
+/// regularly; it never blocks and never calls back into itself.
+///
+/// @tparam Cfg A configuration type, typically derived from DefaultConfig.
+///             See config.hpp for the capacities it must supply.
+///
+/// @code
+/// struct MyConfig : mqtt::DefaultConfig
+/// {
+///     static constexpr size_t rx_buffer_size = 2048;
+/// };
+///
+/// static MyTransport            transport;
+/// static MyClock                clock;
+/// static mqtt::Client<MyConfig> client{transport, clock};
+/// @endcode
 template <typename Cfg = DefaultConfig>
 class Client
 {
     ConfigCheck<Cfg> config_check_{};
 
 public:
+    /// Handler for a received message. The message's topic and payload are
+    /// views into the receive buffer and are valid only for the call.
     using MessageHandler    = etl::delegate<void(const Message&)>;
+    /// Handler invoked once the broker has accepted the CONNECT.
     using ConnectHandler    = etl::delegate<void(const ConnackInfo&)>;
+    /// Handler invoked when a session ends, with the reason it ended.
     using DisconnectHandler = etl::delegate<void(Error)>;
+    /// Handler invoked when a QoS 1 or QoS 2 publish completes, given its
+    /// packet id.
     using DeliveryHandler   = etl::delegate<void(uint16_t)>;
+    /// Handler invoked on SUBACK with the packet id and the broker's granted
+    /// QoS for each requested filter.
     using SubackHandler     = etl::delegate<void(uint16_t, etl::span<const uint8_t>)>;
 
+    /// Construct a client over a transport and a clock.
+    ///
+    /// Both are borrowed, not owned, and must outlive the client. Construction
+    /// performs no I/O and no allocation.
+    ///
+    /// @param transport The byte stream to run MQTT over. See transport.hpp.
+    /// @param clock     A monotonic millisecond source; it may wrap.
     Client(Transport& transport, Clock& clock) noexcept
         : transport_(transport), clock_(clock)
     {
