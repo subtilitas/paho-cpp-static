@@ -1,0 +1,122 @@
+# Publishes the project wiki from the sources in this repository.
+#
+# Before the first run the wiki has to exist: open the repository's Wiki tab
+# and create any page. GitHub does not provision the wiki repository until a
+# first page is saved, and until then the clone below fails with a 404.
+
+name: Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - NOTICE.md
+      - docs/**
+      - include/**
+      - src/**
+      - tests/**
+      - tools/build_wiki.py
+      - .github/workflows/wiki.yml
+  pull_request:
+    paths:
+      - README.md
+      - NOTICE.md
+      - docs/**
+      - include/**
+      - src/**
+      - tests/**
+      - tools/build_wiki.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two runs pushing to the wiki at once would race on a non-fast-forward.
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen
+
+      # The wiki reports measured numbers -- sizeof for each config profile,
+      # object sizes, the live test count -- so the project has to be built
+      # first. This also puts ETL where the generator can find it.
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+
+      - name: Generate wiki pages
+        run: |
+          python3 tools/build_wiki.py \
+            --out wiki \
+            --etl-include build/_deps/etl-src/include \
+            --test-binary build/tests/mqtt_tests
+
+      - name: Show what was generated
+        run: |
+          ls -la wiki
+          echo '--- Memory-Footprint.md ---'
+          cat wiki/Memory-Footprint.md
+
+      # On a pull request, stop here. Generating the pages is a real check --
+      # a broken generator or a Doxygen error fails the build -- but a PR from
+      # a fork must not be able to rewrite the wiki.
+      - name: Upload as an artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: wiki-preview
+          path: wiki
+
+      - name: Publish
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if ! git clone --depth 1 \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" \
+              wiki-repo 2>clone.log; then
+            cat clone.log
+            echo
+            echo "Could not clone the wiki repository."
+            echo "If this is a 404, the wiki has not been created yet: open the"
+            echo "repository's Wiki tab and save any page, then re-run."
+            echo "If this is a 403, GITHUB_TOKEN is not permitted to write the"
+            echo "wiki on this repository -- supply a PAT with 'repo' scope as a"
+            echo "secret and use it in place of GITHUB_TOKEN here."
+            exit 1
+          fi
+
+          # Replace the generated pages wholesale, leaving anything a human
+          # added by hand that we do not generate.
+          rm -f wiki-repo/*.md
+          cp wiki/*.md wiki-repo/
+
+          cd wiki-repo
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "wiki already up to date"
+            exit 0
+          fi
+
+          git commit -m "docs: sync wiki from ${GITHUB_SHA::7}"
+          git push
+          echo "wiki updated"
