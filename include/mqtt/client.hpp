@@ -584,6 +584,13 @@ public:
     /// broker's delivery rate.
     uint32_t inbound_overflow_count() const noexcept { return inbound_overflow_count_; }
 
+    /// Count of acknowledgements deferred because the transmit queue was full.
+    /// The protocol recovers on its own -- the peer retransmits and the ack is
+    /// sent then -- so this is a tuning signal rather than an error: a
+    /// persistently rising value means tx_buffer_size is undersized for the
+    /// traffic, or step() is not being called often enough to drain it.
+    uint32_t tx_backpressure_count() const noexcept { return tx_backpressure_count_; }
+
     /// Bytes serialized but not yet accepted by the transport. Useful as a
     /// backpressure signal before publishing more.
     size_t tx_pending() const noexcept { return tx_.pending(); }
@@ -882,8 +889,18 @@ private:
 
             case QoS::AtLeastOnce:
             {
+                // Acknowledge first, deliver second. If the transmit queue has
+                // no room the message is left both unacknowledged and
+                // undelivered, and the broker retransmits it -- which is
+                // precisely the QoS 1 contract. Delivering first and then
+                // failing to ack would duplicate the message instead.
+                if (send_ack(PacketType::Puback, m.packet_id) != Error::Ok)
+                {
+                    ++tx_backpressure_count_;
+                    return Error::Ok;
+                }
                 dispatch(m);
-                return send_ack(PacketType::Puback, m.packet_id);
+                return Error::Ok;
             }
 
             case QoS::ExactlyOnce:
@@ -891,7 +908,11 @@ private:
                 // Deliver once. The id is remembered until PUBREL so a
                 // retransmitted PUBLISH is acknowledged but not re-delivered.
                 if (inbound_contains(m.packet_id))
-                    return send_ack(PacketType::Pubrec, m.packet_id);
+                {
+                    if (send_ack(PacketType::Pubrec, m.packet_id) != Error::Ok)
+                        ++tx_backpressure_count_;
+                    return Error::Ok;
+                }
 
                 if (inbound_ids_.full())
                 {
@@ -905,9 +926,18 @@ private:
                     return Error::Ok;
                 }
 
+                // Same ordering argument as QoS 1, and the same remedy: with no
+                // room for the PUBREC we neither track nor deliver, so the
+                // retransmission arrives at a client that has not seen it.
+                if (send_ack(PacketType::Pubrec, m.packet_id) != Error::Ok)
+                {
+                    ++tx_backpressure_count_;
+                    return Error::Ok;
+                }
+
                 inbound_ids_.push_back(m.packet_id);
                 dispatch(m);
-                return send_ack(PacketType::Pubrec, m.packet_id);
+                return Error::Ok;
             }
         }
         return Error::ProtocolViolation;
@@ -948,18 +978,30 @@ private:
             if (!n.ok())
                 return n.error();
 
-            slot->packet_len   = static_cast<uint16_t>(n.value());
-            slot->phase        = Phase::WaitPubcomp;
-            slot->last_sent_ms = clock_.now_ms();
+            slot->packet_len = static_cast<uint16_t>(n.value());
+            slot->phase      = Phase::WaitPubcomp;
 
-            return enqueue(etl::span<const uint8_t>(slot->packet.data(), slot->packet_len));
+            // A full queue is not fatal here either: the PUBREL is stored in
+            // the slot, so pump_retransmit() will put it out once there is
+            // room. Only stamp the clock on success, so the retry timer starts
+            // from the last actual transmission rather than from this attempt.
+            if (enqueue(etl::span<const uint8_t>(slot->packet.data(), slot->packet_len))
+                == Error::Ok)
+                slot->last_sent_ms = clock_.now_ms();
+            else
+                ++tx_backpressure_count_;
+
+            return Error::Ok;
         }
 
         if (slot->phase == Phase::WaitPubcomp)
         {
             // Duplicate PUBREC; re-send PUBREL and move on.
-            slot->last_sent_ms = clock_.now_ms();
-            return enqueue(etl::span<const uint8_t>(slot->packet.data(), slot->packet_len));
+            if (enqueue(etl::span<const uint8_t>(slot->packet.data(), slot->packet_len))
+                == Error::Ok)
+                slot->last_sent_ms = clock_.now_ms();
+            else
+                ++tx_backpressure_count_;
         }
 
         return Error::Ok;
@@ -971,8 +1013,18 @@ private:
         if (!id.ok())
             return id.error();
 
+        // Release the tracking slot only once the PUBCOMP is queued. With no
+        // room the id stays held, so a retransmitted PUBREL still finds it and
+        // is answered on the next attempt.
+        const Error e = send_ack(PacketType::Pubcomp, id.value());
+        if (e != Error::Ok)
+        {
+            ++tx_backpressure_count_;
+            return Error::Ok;
+        }
+
         inbound_remove(id.value());
-        return send_ack(PacketType::Pubcomp, id.value());
+        return Error::Ok;
     }
 
     Error handle_pubcomp(etl::span<const uint8_t> body) noexcept
@@ -1433,6 +1485,7 @@ private:
     uint32_t ping_sent_ms_       = 0;
     uint32_t connect_started_ms_ = 0;
     uint32_t inbound_overflow_count_ = 0;
+    uint32_t tx_backpressure_count_  = 0;
     uint16_t next_packet_id_     = 0;
     uint16_t next_sub_id_        = 0;
     bool     ping_outstanding_   = false;

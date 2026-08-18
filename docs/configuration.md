@@ -50,6 +50,17 @@ A larger transmit buffer is the cheapest way to ride out a slow or briefly
 stalled link. `tx_pending()` tells you how full it is, which makes a decent
 back-pressure signal for your application.
 
+Protocol acknowledgements need room here too. When there is none, the client
+defers the acknowledgement rather than dropping the connection: an inbound QoS 1
+or QoS 2 message is left both unacknowledged **and** undelivered, so the broker
+retransmits it and delivery happens on the retry. That keeps the guarantee
+intact — acknowledging a message you could not deliver would lose it, and
+delivering one you could not acknowledge would duplicate it.
+
+`tx_backpressure_count()` counts these deferrals. It is a tuning signal, not an
+error: a persistently rising value means `tx_buffer_size` is undersized for your
+traffic, or `step()` is not being called often enough to drain it.
+
 ### `max_topic_len` — default 64
 
 Longest topic name or filter, in bytes, excluding any NUL. Applies both to
