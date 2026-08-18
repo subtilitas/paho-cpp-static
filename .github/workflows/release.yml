@@ -1,0 +1,184 @@
+# Cuts a GitHub release from a version tag.
+#
+#   git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0
+#
+# The release is assembled as a draft, the per-platform archives are uploaded
+# into it, and it is only published once every platform has succeeded. A failure
+# half way through therefore leaves a draft to delete rather than a published
+# release that is missing artefacts.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build a release for"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ETL_TAG: 20.39.4
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    name: Verify and open a draft
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve the tag and check it against the project version
+        id: meta
+        run: |
+          set -euo pipefail
+
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+
+          # A tag that disagrees with project(VERSION ...) would ship archives
+          # whose names do not match what CMake reports. Catch it before build.
+          declared=$(sed -n 's/.*project(paho-cpp-static VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          if [ -z "$declared" ]; then
+            echo "could not read VERSION out of CMakeLists.txt"
+            exit 1
+          fi
+          if [ "$declared" != "$version" ]; then
+            echo "tag $tag implies version $version, but CMakeLists.txt declares $declared"
+            exit 1
+          fi
+
+          echo "tag=$tag"         >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "releasing $tag (version $version)"
+
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists; reusing it as a draft"
+            gh release edit "$tag" --draft
+          else
+            gh release create "$tag" \
+              --draft \
+              --title "$tag" \
+              --generate-notes
+          fi
+
+  package:
+    name: Package ${{ matrix.name }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "linux-x86_64",  os: ubuntu-latest,  cc: gcc,   cxx: g++ }
+          - { name: "macos-arm64",   os: macos-latest,   cc: clang, cxx: clang++ }
+          - { name: "windows-x86_64", os: windows-latest }
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-${{ env.ETL_TAG }}
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMQTT_WERROR=ON \
+            -DMQTT_BUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX=stage
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # A release that has not been tested is a rumour.
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+      - name: Install
+        run: cmake --install build --config Release
+
+      - name: Archive
+        id: archive
+        run: |
+          set -euo pipefail
+          name="paho-cpp-static-${{ needs.prepare.outputs.version }}-${{ matrix.name }}"
+
+          cp LICENSE NOTICE.md README.md stage/
+          mv stage "$name"
+
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            file="$name.zip"
+            7z a -tzip "$file" "$name" > /dev/null
+          else
+            file="$name.tar.gz"
+            tar -czf "$file" "$name"
+          fi
+
+          # Shipped alongside so a consumer can verify what they downloaded.
+          if command -v sha256sum > /dev/null; then
+            sha256sum "$file" > "$file.sha256"
+          else
+            shasum -a 256 "$file" > "$file.sha256"
+          fi
+
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          cat "$file.sha256"
+
+      - name: Upload into the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.prepare.outputs.tag }}" \
+            "${{ steps.archive.outputs.file }}" \
+            "${{ steps.archive.outputs.file }}.sha256" \
+            --clobber
+
+      - name: Keep the archive as a workflow artefact too
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ steps.archive.outputs.file }}
+
+  publish:
+    name: Publish
+    needs: [prepare, package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Drop the draft flag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ needs.prepare.outputs.tag }}" --draft=false
+          echo "published ${{ needs.prepare.outputs.tag }}"
