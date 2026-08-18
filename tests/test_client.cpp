@@ -615,7 +615,7 @@ TEST(client_resubscribes_when_broker_lost_the_session)
 
     // Reconnect with a session the broker does not recognise.
     ConnectOptions opts = f.default_options();
-    opts.clean_session  = false;   // keep our subscription table
+    opts.clean_session  = false;
     f.client.abort();
     f.transport.clear_sent();
     CHECK(f.client.connect(opts) == Error::Ok);
@@ -626,6 +626,34 @@ TEST(client_resubscribes_when_broker_lost_the_session)
 
     // The client must re-send the subscription unprompted.
     f.client.step();
+    CHECK(sim::find_sent(f.transport, PacketType::Subscribe).valid);
+}
+
+// clean_session tells the broker to discard *its* state. Our own record of what
+// the application asked for has to survive, because it is the only thing that
+// can rebuild the session -- we never keep the caller's strings alive.
+TEST(client_resubscribes_after_a_clean_session_reconnect)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());   // clean_session = true
+
+    uint16_t id = 0;
+    f.client.subscribe(etl::string_view("sensors/#"), QoS::AtLeastOnce,
+                       TestClient::MessageHandler(), &id);
+    f.client.step();
+    const uint8_t granted[] = {0x01};
+    sim::push_suback(f.transport, id, granted, 1);
+    f.client.step();
+    CHECK_EQ(f.client.subscription_count(), size_t{1});
+
+    f.client.abort();
+    CHECK_EQ(f.client.subscription_count(), size_t{1});
+
+    f.transport.clear_sent();
+    REQUIRE(f.bring_up());
+    f.client.step();
+
+    CHECK_EQ(f.client.subscription_count(), size_t{1});
     CHECK(sim::find_sent(f.transport, PacketType::Subscribe).valid);
 }
 

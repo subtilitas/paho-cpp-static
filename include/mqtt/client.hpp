@@ -1352,8 +1352,16 @@ private:
             release_slot(outbound_[i]);
         inbound_ids_.clear();
         pending_.clear();
-        subscriptions_.clear();
         next_packet_id_ = 0;
+
+        // The subscription table is deliberately *not* cleared. A clean session
+        // discards the state held by the broker, not our own record of what the
+        // application asked for -- and that record is the only thing that can
+        // rebuild the session, since we do not keep the caller's strings alive.
+        // Marking the table instead is what makes pump_resubscribe() fire after
+        // the next CONNACK. Call unsubscribe() to actually forget a filter.
+        for (Subscription& s : subscriptions_)
+            s.needs_resub = true;
     }
 
     /// End the session, notify, and return the reason so callers can `return
