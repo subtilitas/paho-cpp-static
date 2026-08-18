@@ -491,6 +491,84 @@ TEST(client_unsubscribes_on_unsuback)
     CHECK_EQ(f.client.subscription_count(), size_t{0});
 }
 
+// Two SUBSCRIBEs are outstanding and the broker refuses one filter from each.
+// Erasing the first refusal compacts the subscription table, which used to
+// invalidate the positions recorded by the second request: the client then
+// erased a filter the broker had granted and kept the one it had refused.
+TEST(client_survives_a_refusal_that_compacts_the_table)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    int hits_cd = 0;
+    auto h_ab   = [](const Message&) {};
+    auto h_cd   = [&](const Message&) { ++hits_cd; };
+
+    const TopicSubscription ab[2] = {{etl::string_view("a"), QoS::AtMostOnce},
+                                     {etl::string_view("b"), QoS::AtMostOnce}};
+    const TopicSubscription cd[2] = {{etl::string_view("c"), QoS::AtMostOnce},
+                                     {etl::string_view("d"), QoS::AtMostOnce}};
+
+    uint16_t id1 = 0, id2 = 0;
+    CHECK(f.client.subscribe(etl::span<const TopicSubscription>(ab, 2),
+                             TestClient::MessageHandler(h_ab), &id1) == Error::Ok);
+    CHECK(f.client.subscribe(etl::span<const TopicSubscription>(cd, 2),
+                             TestClient::MessageHandler(h_cd), &id2) == Error::Ok);
+    f.client.step();
+    CHECK_EQ(f.client.subscription_count(), size_t{4});
+
+    const uint8_t refuse_first[2] = {kSubackFailure, 0x00};
+    sim::push_suback(f.transport, id1, refuse_first, 2);   // "a" refused
+    f.client.step();
+    CHECK_EQ(f.client.subscription_count(), size_t{3});
+
+    sim::push_suback(f.transport, id2, refuse_first, 2);   // "c" refused
+    f.client.step();
+    CHECK_EQ(f.client.subscription_count(), size_t{2});
+
+    // "d" was granted, so its handler must still be wired up.
+    sim::push_publish(f.transport, "d", "x");
+    f.client.step();
+    CHECK_EQ(hits_cd, 1);
+
+    // ...and "c" was refused, so nothing must be left claiming it.
+    sim::push_publish(f.transport, "c", "x");
+    f.client.step();
+    CHECK_EQ(hits_cd, 1);
+}
+
+// UNSUBACK used to erase by recorded table position, back to front, which only
+// works when the caller happens to name filters in ascending table order.
+TEST(client_unsubscribes_regardless_of_argument_order)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    const uint8_t granted[] = {0x00};
+    const char*   names[]   = {"a", "c"};
+    for (size_t i = 0; i < 2; ++i)
+    {
+        uint16_t id = 0;
+        f.client.subscribe(etl::string_view(names[i]), QoS::AtMostOnce,
+                           TestClient::MessageHandler(), &id);
+        f.client.step();
+        sim::push_suback(f.transport, id, granted, 1);
+        f.client.step();
+    }
+    CHECK_EQ(f.client.subscription_count(), size_t{2});
+
+    // Name the later entry first.
+    const etl::string_view filters[2] = {etl::string_view("c"), etl::string_view("a")};
+    uint16_t uid = 0;
+    CHECK(f.client.unsubscribe(etl::span<const etl::string_view>(filters, 2), &uid)
+          == Error::Ok);
+    f.client.step();
+    sim::push_unsuback(f.transport, uid);
+    f.client.step();
+
+    CHECK_EQ(f.client.subscription_count(), size_t{0});
+}
+
 TEST(client_rejects_invalid_filter)
 {
     Fixture f;
