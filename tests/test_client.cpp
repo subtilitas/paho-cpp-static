@@ -136,6 +136,21 @@ TEST(client_times_out_a_stalled_handshake)
     CHECK(f.client.state() == State::Idle);
 }
 
+TEST(client_rejects_anonymous_id_on_a_resumable_session)
+{
+    // MQTT-3.1.3-8: an empty client id asks the broker to assign one, which it
+    // can only do for a session it is not expected to remember.
+    Fixture f;
+    ConnectOptions opts = f.default_options();
+    opts.client_id      = etl::string_view("");
+
+    opts.clean_session = false;
+    CHECK(f.client.connect(opts) == Error::InvalidArgument);
+
+    opts.clean_session = true;
+    CHECK(f.client.connect(opts) == Error::Ok);
+}
+
 TEST(client_rejects_second_connect_while_active)
 {
     Fixture f;

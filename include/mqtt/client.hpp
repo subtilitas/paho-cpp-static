@@ -167,6 +167,12 @@ public:
         if (opts.will.valid() && !is_valid_topic_name(opts.will.topic))
             return Error::InvalidArgument;
 
+        // MQTT-3.1.3-8: a zero-length client id asks the broker to assign one,
+        // which it can only do for a session it is not expected to remember.
+        // Catch it here rather than spending a round trip to be told.
+        if (opts.client_id.empty() && !opts.clean_session)
+            return Error::InvalidArgument;
+
         const Result<uint32_t> rl = codec::connect_remaining_length(opts);
         if (!rl.ok())
             return rl.error();

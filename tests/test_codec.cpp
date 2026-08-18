@@ -358,6 +358,64 @@ TEST(codec_peek_reports_incomplete_until_header_arrives)
     CHECK_EQ(p3.value().total_bytes, size_t{203});
 }
 
+//------------------------------------------------------------------------------
+// Encoder-side validation
+//
+// The decoder rejects these; the encoder must not be able to produce them, or
+// the library can put a packet on the wire that it would refuse to receive.
+//------------------------------------------------------------------------------
+
+TEST(codec_publish_rejects_dup_on_qos0)
+{
+    uint8_t       buf[32]     = {};
+    const uint8_t payload[1]  = {'x'};
+
+    CHECK(codec::encode_publish(etl::span<uint8_t>(buf, sizeof(buf)),
+                                etl::string_view("t"),
+                                etl::span<const uint8_t>(payload, 1),
+                                QoS::AtMostOnce, false, /*dup=*/true, 0)
+              .error() == Error::InvalidArgument);   // MQTT-3.3.1-2
+
+    // The same call without DUP is fine.
+    CHECK(codec::encode_publish(etl::span<uint8_t>(buf, sizeof(buf)),
+                                etl::string_view("t"),
+                                etl::span<const uint8_t>(payload, 1),
+                                QoS::AtMostOnce, false, false, 0)
+              .ok());
+}
+
+TEST(codec_rejects_qos_outside_the_defined_range)
+{
+    const QoS bad = static_cast<QoS>(3);
+    uint8_t   buf[64] = {};
+
+    const TopicSubscription sub{etl::string_view("a"), bad};
+    CHECK(codec::encode_subscribe(etl::span<uint8_t>(buf, sizeof(buf)), 1,
+                                  etl::span<const TopicSubscription>(&sub, 1))
+              .error() == Error::InvalidArgument);   // MQTT-3-8.3-4
+
+    ConnectOptions opts;
+    opts.client_id  = etl::string_view("c");
+    opts.will.topic = etl::string_view("w");
+    opts.will.qos   = bad;
+    CHECK(codec::encode_connect(etl::span<uint8_t>(buf, sizeof(buf)), opts)
+              .error() == Error::InvalidArgument);   // MQTT-3.1.2-14
+
+    CHECK(codec::publish_remaining_length(etl::string_view("t"), 1, bad)
+              .error() == Error::InvalidArgument);
+}
+
+TEST(codec_connack_rejects_session_present_with_a_refusal)
+{
+    // MQTT-3.2.2-4: a broker that refuses the connection must report no session.
+    const uint8_t contradictory[] = {0x01, 0x05};
+    CHECK(codec::decode_connack(etl::span<const uint8_t>(contradictory, 2))
+              .error() == Error::ProtocolViolation);
+
+    const uint8_t consistent[] = {0x00, 0x05};
+    CHECK(codec::decode_connack(etl::span<const uint8_t>(consistent, 2)).ok());
+}
+
 TEST(codec_string_helpers_roundtrip)
 {
     uint8_t buf[16] = {};
