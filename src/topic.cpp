@@ -92,18 +92,12 @@ bool topic_matches(etl::string_view filter, etl::string_view topic) noexcept
             return true;
         }
 
-        if (t > topic.size())
-            return false;
-
-        // Extract the corresponding topic level.
+        // Extract the corresponding topic level. `t` is only ever advanced to
+        // t_end + 1 where t_end < topic.size(), so it cannot run past the end.
         size_t t_end = t;
         while (t_end < topic.size() && topic[t_end] != '/')
             ++t_end;
         const etl::string_view t_level = topic.substr(t, t_end - t);
-
-        const bool topic_exhausted = (t > topic.size());
-        if (topic_exhausted)
-            return false;
 
         if (f_level.size() == 1 && f_level[0] == '+')
         {

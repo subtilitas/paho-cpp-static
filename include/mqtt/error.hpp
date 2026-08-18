@@ -116,29 +116,9 @@ private:
     Error error_;
 };
 
-/// Propagate an error out of the current function if `expr` failed.
-/// Used heavily in the codec so every bounds check is visible but not noisy.
-#define MQTT_TRY(expr)                                    \
-    do                                                    \
-    {                                                     \
-        const ::mqtt::Error mqtt_try_rc_ = (expr);        \
-        if (mqtt_try_rc_ != ::mqtt::Error::Ok)            \
-            return mqtt_try_rc_;                          \
-    } while (false)
-
 /// Convert a bool-returning ETL stream write into an Error.
 #define MQTT_WRITE(expr) \
     do { if (!(expr)) return ::mqtt::Error::BufferTooSmall; } while (false)
-
-/// Convert an etl::optional-returning ETL stream read into an Error.
-#define MQTT_READ(dest, expr)                             \
-    do                                                    \
-    {                                                     \
-        auto mqtt_opt_ = (expr);                          \
-        if (!mqtt_opt_.has_value())                       \
-            return ::mqtt::Error::MalformedPacket;        \
-        (dest) = mqtt_opt_.value();                       \
-    } while (false)
 
 } // namespace mqtt
 
