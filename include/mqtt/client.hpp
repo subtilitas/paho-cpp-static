@@ -99,7 +99,11 @@ constexpr size_t at_least_one(size_t n) noexcept { return (n > 0) ? n : 1; }
 template <typename Cfg = DefaultConfig>
 class Client
 {
-    ConfigCheck<Cfg> config_check_{};
+    // Instantiating ConfigCheck is what fires its static_asserts. It is
+    // referenced here rather than held as a member: an empty member is still
+    // one byte plus alignment padding, and this is the one type in the library
+    // whose sizeof() is a documented promise.
+    static_assert(sizeof(ConfigCheck<Cfg>) > 0, "configuration check");
 
 public:
     /// Handler for a received message. The message's topic and payload are
