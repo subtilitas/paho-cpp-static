@@ -392,19 +392,19 @@ public:
                 existing->requested_qos = s.qos;
                 existing->handler       = handler;
                 existing->needs_resub   = false;
-                ack.indices.push_back(static_cast<uint8_t>(existing - subscriptions_.data()));
+                ack.subs.push_back(existing->sub_id);
             }
             else
             {
                 Subscription entry;
+                entry.sub_id = alloc_sub_id();
                 entry.filter.assign(s.filter.data(), s.filter.size());
                 entry.requested_qos = s.qos;
                 entry.granted_qos   = 0;
                 entry.handler       = handler;
-                entry.acked         = false;
                 entry.needs_resub   = false;
                 subscriptions_.push_back(entry);
-                ack.indices.push_back(static_cast<uint8_t>(subscriptions_.size() - 1));
+                ack.subs.push_back(entry.sub_id);
             }
         }
 
@@ -455,7 +455,7 @@ public:
         {
             Subscription* s = find_subscription(f);
             if (s != nullptr)
-                ack.indices.push_back(static_cast<uint8_t>(s - subscriptions_.data()));
+                ack.subs.push_back(s->sub_id);
         }
 
         pending_.push_back(ack);
@@ -624,15 +624,22 @@ private:
     {
         etl::string<Cfg::max_topic_len> filter;
         MessageHandler handler;
+        /// Identity that survives table compaction. A SUBACK that refuses a
+        /// filter erases an entry and shifts every entry after it, so a
+        /// position recorded when the request was sent is worthless by the
+        /// time the ack arrives -- including positions recorded by a *different*
+        /// request that is still in flight. Acks therefore name subscriptions
+        /// by id and look them up, never by index.
+        uint16_t sub_id        = 0;
         QoS      requested_qos = QoS::AtMostOnce;
         uint8_t  granted_qos   = 0;
-        bool     acked         = false;
         bool     needs_resub   = false;
     };
 
     struct PendingAck
     {
-        etl::vector<uint8_t, Cfg::max_topics_per_request> indices;
+        /// sub_ids of the subscriptions this request covers, in wire order.
+        etl::vector<uint16_t, Cfg::max_topics_per_request> subs;
         uint32_t   sent_ms   = 0;
         uint16_t   packet_id = 0;
         PacketType expected  = PacketType::Reserved;
@@ -848,7 +855,6 @@ private:
         {
             for (Subscription& s : subscriptions_)
             {
-                s.acked       = false;
                 s.needs_resub = true;
             }
         }
@@ -996,27 +1002,22 @@ private:
         if (ack == nullptr)
             return Error::Ok;   // stale ack, ignore
 
-        if (v.return_codes.size() != ack->indices.size())
+        if (v.return_codes.size() != ack->subs.size())
             return Error::ProtocolViolation;
 
-        // Walk backwards so erasing refused subscriptions cannot invalidate the
-        // indices we have yet to visit.
-        for (size_t i = v.return_codes.size(); i-- > 0;)
+        // Order does not matter: each entry is named by id, so erasing one
+        // cannot disturb the lookup of any other.
+        for (size_t i = 0; i < v.return_codes.size(); ++i)
         {
-            const uint8_t idx = ack->indices[i];
-            if (idx >= subscriptions_.size())
-                continue;
-
             const uint8_t rc = v.return_codes[i];
             if (rc == kSubackFailure)
             {
-                subscriptions_.erase(subscriptions_.begin() + idx);
+                erase_subscription(ack->subs[i]);
             }
-            else
+            else if (Subscription* s = find_by_sub_id(ack->subs[i]))
             {
-                subscriptions_[idx].granted_qos = rc;
-                subscriptions_[idx].acked       = true;
-                subscriptions_[idx].needs_resub = false;
+                s->granted_qos = rc;
+                s->needs_resub = false;
             }
         }
 
@@ -1035,12 +1036,8 @@ private:
         if (ack == nullptr)
             return Error::Ok;
 
-        for (size_t i = ack->indices.size(); i-- > 0;)
-        {
-            const uint8_t idx = ack->indices[i];
-            if (idx < subscriptions_.size())
-                subscriptions_.erase(subscriptions_.begin() + idx);
-        }
+        for (const uint16_t sid : ack->subs)
+            erase_subscription(sid);
 
         remove_pending(ack);
         return Error::Ok;
@@ -1142,17 +1139,16 @@ private:
             return;
 
         etl::vector<TopicSubscription, Cfg::max_topics_per_request> batch;
-        etl::vector<uint8_t, Cfg::max_topics_per_request>           indices;
+        etl::vector<uint16_t, Cfg::max_topics_per_request>          ids;
 
-        for (size_t i = 0; i < subscriptions_.size(); ++i)
+        for (const Subscription& s : subscriptions_)
         {
-            if (!subscriptions_[i].needs_resub)
+            if (!s.needs_resub)
                 continue;
 
             batch.push_back(TopicSubscription{
-                etl::string_view(subscriptions_[i].filter.data(), subscriptions_[i].filter.size()),
-                subscriptions_[i].requested_qos});
-            indices.push_back(static_cast<uint8_t>(i));
+                etl::string_view(s.filter.data(), s.filter.size()), s.requested_qos});
+            ids.push_back(s.sub_id);
 
             if (batch.full())
                 break;
@@ -1181,10 +1177,11 @@ private:
         ack.packet_id = id;
         ack.expected  = PacketType::Suback;
         ack.sent_ms   = clock_.now_ms();
-        for (const uint8_t idx : indices)
+        for (const uint16_t sid : ids)
         {
-            ack.indices.push_back(idx);
-            subscriptions_[idx].needs_resub = false;
+            ack.subs.push_back(sid);
+            if (Subscription* s = find_by_sub_id(sid))
+                s->needs_resub = false;
         }
         pending_.push_back(ack);
     }
@@ -1262,6 +1259,46 @@ private:
                 return &s;
         }
         return nullptr;
+    }
+
+    Subscription* find_by_sub_id(uint16_t sid) noexcept
+    {
+        for (Subscription& s : subscriptions_)
+        {
+            if (s.sub_id == sid)
+                return &s;
+        }
+        return nullptr;
+    }
+
+    /// Drop the entry with this id, if it is still there. Safe to call for an
+    /// id that has already gone: a stale ack simply finds nothing.
+    void erase_subscription(uint16_t sid) noexcept
+    {
+        for (size_t i = 0; i < subscriptions_.size(); ++i)
+        {
+            if (subscriptions_[i].sub_id == sid)
+            {
+                subscriptions_.erase(subscriptions_.begin() + i);
+                return;
+            }
+        }
+    }
+
+    /// Next free subscription id, skipping 0 and anything live. Wraps, so a
+    /// long-lived client that churns subscriptions cannot collide with an
+    /// entry that has outlasted a full trip round the counter.
+    uint16_t alloc_sub_id() noexcept
+    {
+        for (uint32_t tries = 0; tries < 65535u; ++tries)
+        {
+            next_sub_id_ = (next_sub_id_ == 65535u)
+                               ? 1u
+                               : static_cast<uint16_t>(next_sub_id_ + 1u);
+            if (find_by_sub_id(next_sub_id_) == nullptr)
+                return next_sub_id_;
+        }
+        return 0;
     }
 
     PendingAck* find_pending(uint16_t id, PacketType expected) noexcept
@@ -1347,7 +1384,6 @@ private:
 
         for (Subscription& s : subscriptions_)
         {
-            s.acked       = false;
             s.needs_resub = true;
         }
 
@@ -1390,6 +1426,7 @@ private:
     uint32_t connect_started_ms_ = 0;
     uint32_t inbound_overflow_count_ = 0;
     uint16_t next_packet_id_     = 0;
+    uint16_t next_sub_id_        = 0;
     bool     ping_outstanding_   = false;
     bool     clean_session_      = true;
     bool     retransmit_now_     = false;
