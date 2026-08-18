@@ -108,6 +108,11 @@ class Client
 public:
     /// Handler for a received message. The message's topic and payload are
     /// views into the receive buffer and are valid only for the call.
+    ///
+    /// Handlers run inside step(), while the subscription table is being walked.
+    /// Calling subscribe() or unsubscribe() from one would mutate that table
+    /// mid-iteration, so don't: set a flag and act on it after step() returns.
+    /// publish() is fine, as are all the introspection accessors.
     using MessageHandler    = etl::delegate<void(const Message&)>;
     /// Handler invoked once the broker has accepted the CONNECT.
     using ConnectHandler    = etl::delegate<void(const ConnackInfo&)>;
@@ -140,6 +145,11 @@ public:
     //--------------------------------------------------------------------------
 
     /// Fallback handler for messages no per-subscription handler matched.
+    ///
+    /// Dispatch is by filter match, not by "first match wins": a message that
+    /// matches several subscriptions is delivered to each of their handlers.
+    /// Subscribing to both "a/#" and "a/b" therefore sees "a/b" twice. This
+    /// fallback runs only when no per-subscription handler matched at all.
     void on_message(MessageHandler h) noexcept { on_message_ = h; }
     /// Invoked once the broker accepts the CONNECT.
     void on_connect(ConnectHandler h) noexcept { on_connect_ = h; }
