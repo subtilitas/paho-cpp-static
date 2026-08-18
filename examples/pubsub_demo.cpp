@@ -73,8 +73,11 @@ int main(int argc, char** argv)
     client.on_delivery_complete(on_delivery);
 
     mqtt::ConnectOptions opts;
-    opts.client_id     = etl::string_view("mqtt-embedded-demo");
-    opts.keep_alive_s  = 20;
+    opts.client_id = etl::string_view("mqtt-embedded-demo");
+    // Short enough that the idle stretch below actually provokes a PINGREQ.
+    // Keep-alive is measured from the last byte *sent*, so a demo that publishes
+    // every second would never ping however long it ran.
+    opts.keep_alive_s  = 5;
     opts.clean_session = true;
 
     if (client.connect(opts) != mqtt::Error::Ok)
@@ -141,6 +144,20 @@ int main(int argc, char** argv)
     {
         client.step();
         transport.wait_readable(50);
+    }
+
+    // Then sit quiet for longer than the keep-alive threshold (75% of the
+    // interval) so the connection is held open by PINGREQ/PINGRESP alone. This
+    // is the only part of the protocol that a short, chatty demo never reaches,
+    // and it is the part most likely to be wrong against a real broker.
+    std::printf("idling to exercise keep-alive...\n");
+    const uint32_t idle_started = g_clock.now_ms();
+    while (g_running &&
+           mqtt::elapsed_ms(g_clock.now_ms(), idle_started) < 6000u)
+    {
+        if (client.step() != mqtt::Error::Ok)
+            break;
+        transport.wait_readable(100);
     }
 
     client.disconnect();

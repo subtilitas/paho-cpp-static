@@ -45,6 +45,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Keep in step with the GIT_TAG in CMakeLists.txt.
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-wiki-20.39.4
+
       - name: Install Doxygen
         run: |
           sudo apt-get update
