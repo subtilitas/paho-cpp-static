@@ -763,6 +763,49 @@ TEST(client_holds_data_while_transport_refuses_writes)
     CHECK(sim::find_sent(f.transport, PacketType::Publish).valid);
 }
 
+// A transmit queue with no room is back-pressure, not a protocol error. The
+// acknowledgement is deferred, the message is not delivered, and the broker's
+// own retransmission closes the gap -- the session must stay up.
+TEST(client_defers_acks_instead_of_dropping_the_session)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    // topic "t" plus 250 payload bytes serializes to 256; twice fills the
+    // 512-byte queue exactly, leaving no room for a four-byte PUBACK.
+    f.transport.send_blocked = true;
+    uint8_t filler[250]      = {};
+    for (int i = 0; i < 2; ++i)
+        CHECK(f.client.publish(etl::string_view("t"),
+                               etl::span<const uint8_t>(filler, sizeof(filler)))
+              == Error::Ok);
+    CHECK_EQ(f.client.tx_pending(), size_t{512});
+
+    int delivered = 0;
+    auto sink     = [&](const Message&) { ++delivered; };
+    f.client.on_message(sink);
+
+    sim::push_publish(f.transport, "t", "x", QoS::AtLeastOnce, 7);
+    CHECK(f.client.step() == Error::Ok);
+
+    CHECK(f.client.is_connected());
+    CHECK_EQ(f.client.tx_backpressure_count(), 1u);
+    CHECK_EQ(delivered, 0);   // not acked, so not delivered either
+
+    // Once the queue drains, the broker's retransmission is accepted normally.
+    f.transport.send_blocked = false;
+    f.client.step();
+    f.transport.clear_sent();
+
+    sim::push_publish(f.transport, "t", "x", QoS::AtLeastOnce, 7, /*dup=*/true);
+    f.client.step();
+
+    CHECK_EQ(delivered, 1);
+    const sim::SentPacket ack = sim::find_sent(f.transport, PacketType::Puback);
+    REQUIRE(ack.valid);
+    CHECK_EQ(sim::sent_ack_id(ack), uint16_t{7});
+}
+
 TEST(client_reports_transport_close)
 {
     Fixture f;
