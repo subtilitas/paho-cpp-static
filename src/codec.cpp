@@ -23,6 +23,16 @@ bool checked_add(uint32_t& total, uint64_t add) noexcept
     return true;
 }
 
+/// QoS is an enum class, which constrains what callers *mean* but not what
+/// they can produce: a value cast from a config file or a wire byte can hold 3,
+/// which the spec forbids everywhere it appears. Encoding is the last place to
+/// catch it, so check rather than truncate -- a silently masked QoS would put a
+/// packet on the wire that this library's own decoder rejects.
+bool valid_qos(QoS q) noexcept
+{
+    return static_cast<uint8_t>(q) <= 2u;
+}
+
 /// Write the fixed header for `type` with the given flags and remaining length.
 Error write_fixed_header(etl::byte_stream_writer& w,
                          PacketType type,
@@ -117,6 +127,8 @@ Result<uint32_t> connect_remaining_length(const ConnectOptions& opts) noexcept
 
     if (opts.will.valid())
     {
+        if (!valid_qos(opts.will.qos))
+            return Error::InvalidArgument;  // MQTT-3.1.2-14
         if (opts.will.topic.size() > kMaxStringLen ||
             opts.will.payload.size() > kMaxStringLen)
             return Error::InvalidArgument;
@@ -153,6 +165,8 @@ Result<uint32_t> publish_remaining_length(etl::string_view topic,
 {
     if (topic.empty() || topic.size() > kMaxStringLen)
         return Error::InvalidArgument;
+    if (!valid_qos(qos))
+        return Error::InvalidArgument;
 
     uint32_t total = 0;
     if (!checked_add(total, utf8_size(topic.size())))
@@ -181,6 +195,8 @@ Result<uint32_t> subscribe_remaining_length(
     {
         if (s.filter.empty() || s.filter.size() > kMaxStringLen)
             return Error::InvalidArgument;
+        if (!valid_qos(s.qos))
+            return Error::InvalidArgument;  // MQTT-3-8.3-4
         if (!checked_add(total, utf8_size(s.filter.size()) + 1u))  // +1 requested QoS
             return Error::InvalidArgument;
     }
@@ -280,6 +296,8 @@ Result<size_t> encode_publish(etl::span<uint8_t> out,
 {
     if (qos != QoS::AtMostOnce && packet_id == 0)
         return Error::InvalidArgument;  // QoS > 0 requires a non-zero packet id
+    if (qos == QoS::AtMostOnce && dup)
+        return Error::InvalidArgument;  // MQTT-3.3.1-2: DUP must be 0 at QoS 0
 
     const Result<uint32_t> rl = publish_remaining_length(topic, payload.size(), qos);
     if (!rl.ok())
@@ -450,6 +468,11 @@ Result<ConnackInfo> decode_connack(etl::span<const uint8_t> body) noexcept
         return Error::ProtocolViolation;
 
     if (body[1] > static_cast<uint8_t>(ConnackCode::NotAuthorized))
+        return Error::ProtocolViolation;
+
+    // MQTT-3.2.2-4: a refusal must carry session present = 0. A broker that
+    // sets both is telling us it resumed a session it also declined to open.
+    if ((body[0] & 0x01u) != 0 && body[1] != 0)
         return Error::ProtocolViolation;
 
     ConnackInfo info;
