@@ -178,7 +178,10 @@ if (client.state() == mqtt::State::Idle && backoff_expired())
 ```
 
 Subscriptions are remembered and re-sent automatically, so a reconnect restores
-your session without bookkeeping on your side.
+your session without bookkeeping on your side. This holds regardless of
+`clean_session`: that flag governs what the *broker* keeps, while the client's
+table is its own record of what you asked for. Call `unsubscribe()` to forget a
+filter.
 
 [docs/comparison-with-paho.md](docs/comparison-with-paho.md) explains what was
 dropped and why, with allocation counts for the same operations in both
@@ -186,9 +189,11 @@ libraries.
 
 ## Testing
 
-81 tests, 421 assertions, in a dependency-free harness — deliberately not
-GoogleTest, since a framework that reports failures by throwing would undercut
-the `-fno-exceptions` guarantee.
+A dependency-free harness — deliberately not GoogleTest, since a framework that
+reports failures by throwing would undercut the `-fno-exceptions` guarantee. The
+live count and the name of every case are on the generated
+[Test inventory](https://github.com/subtilitas/paho-cpp-static/wiki/Test-Inventory)
+page, which is rebuilt from the suite itself on every push.
 
 | File | Covers |
 |---|---|

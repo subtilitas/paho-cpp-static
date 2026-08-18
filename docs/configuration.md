@@ -129,6 +129,13 @@ Active subscriptions. Retained across reconnects and re-sent automatically when
 CONNACK reports `session_present = false`. `subscribe()` returns
 `Error::NoSubscriptionSlot` when full.
 
+Retention does not depend on `clean_session`. That flag governs the state the
+*broker* keeps; the client's own table is its record of what the application
+asked for, and it is the only thing that can rebuild the session, since the
+caller's filter strings are copied in and never referenced again. `unsubscribe()`
+is how you forget a filter, and a filter the broker refuses in SUBACK is dropped
+automatically.
+
 Costs roughly `max_subscriptions × (max_topic_len + 24)` bytes.
 
 Use wildcards to keep this small: one subscription to `sensors/+/cmd` beats
