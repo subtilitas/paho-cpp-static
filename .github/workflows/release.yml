@@ -48,23 +48,38 @@ jobs:
           set -euo pipefail
 
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          version="${tag#v}"
+          tagged="${tag#v}"
 
-          # A tag that disagrees with project(VERSION ...) would ship archives
-          # whose names do not match what CMake reports. Catch it before build.
+          # This repository tags v1.1 and v1.3 while CMake declares 1.3.0, so
+          # compare on meaning rather than on spelling: pad both to major.minor
+          # .patch first. v1.3 and v1.3.0 are then the same release, and a tag
+          # that genuinely disagrees with project(VERSION ...) -- which would
+          # ship archives named after a version nobody declared -- still fails.
+          pad3() {
+            case "$(printf '%s' "$1" | tr -cd '.' | wc -c)" in
+              0) printf '%s.0.0' "$1" ;;
+              1) printf '%s.0'   "$1" ;;
+              *) printf '%s'     "$1" ;;
+            esac
+          }
+
           declared=$(sed -n 's/.*project(paho-cpp-static VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           if [ -z "$declared" ]; then
             echo "could not read VERSION out of CMakeLists.txt"
             exit 1
           fi
-          if [ "$declared" != "$version" ]; then
-            echo "tag $tag implies version $version, but CMakeLists.txt declares $declared"
+
+          version=$(pad3 "$declared")
+          if [ "$(pad3 "$tagged")" != "$version" ]; then
+            echo "tag $tag implies version $tagged, but CMakeLists.txt declares $declared"
             exit 1
           fi
 
+          # Archives are named from the declared version, so v1.5 and v1.5.0
+          # both produce paho-cpp-static-1.5.0-<platform>.
           echo "tag=$tag"         >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "releasing $tag (version $version)"
+          echo "releasing $tag as version $version"
 
       - name: Create the draft release
         env:
