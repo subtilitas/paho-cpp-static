@@ -93,14 +93,13 @@ struct ConfigCheck
                   "tx_buffer_size must hold at least a CONNECT packet");
     static_assert(Cfg::max_topic_len >= 1, "max_topic_len must be non-zero");
     static_assert(Cfg::max_client_id_len >= 1, "max_client_id_len must be non-zero");
-    static_assert(Cfg::max_topics_per_request >= 1,
-                  "max_topics_per_request must be non-zero");
+    static_assert(Cfg::max_topics_per_request >= 1, "max_topics_per_request must be non-zero");
     static_assert(Cfg::max_inflight_out == 0 || Cfg::max_persisted_msg_size >= 8,
                   "max_persisted_msg_size too small to hold a PUBLISH header");
     static_assert(Cfg::rx_buffer_size <= 268435460u,
                   "rx_buffer_size exceeds the MQTT maximum packet size");
 };
 
-} // namespace mqtt
+}   // namespace mqtt
 
-#endif // MQTT_CONFIG_HPP
+#endif   // MQTT_CONFIG_HPP

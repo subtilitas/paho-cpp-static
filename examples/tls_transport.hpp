@@ -203,7 +203,7 @@ private:
     bool setup_done_ = false;
 };
 
-} // namespace example
+}   // namespace example
 
-#endif // MQTT_EXAMPLE_USE_MBEDTLS
-#endif // MQTT_TLS_TRANSPORT_HPP
+#endif   // MQTT_EXAMPLE_USE_MBEDTLS
+#endif   // MQTT_TLS_TRANSPORT_HPP

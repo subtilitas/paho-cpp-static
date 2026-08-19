@@ -23,7 +23,7 @@ public:
     // --- knobs ---------------------------------------------------------------
 
     /// Number of connect() calls that report WouldBlock before succeeding.
-    int  connect_delay = 0;
+    int connect_delay = 0;
     /// Fail the next connect() outright.
     bool connect_fails = false;
     /// Maximum bytes accepted per send() call. 0 means unlimited.
@@ -124,8 +124,8 @@ public:
     /// Force the connection up without going through connect().
     void force_connected() noexcept { connected_ = true; }
 
-    etl::vector<uint8_t, kPipeCapacity> sent{};     ///< bytes the client wrote
-    etl::vector<uint8_t, kPipeCapacity> inbound{};  ///< bytes queued for the client
+    etl::vector<uint8_t, kPipeCapacity> sent{};      ///< bytes the client wrote
+    etl::vector<uint8_t, kPipeCapacity> inbound{};   ///< bytes queued for the client
 
     int connect_calls = 0;
     int close_calls   = 0;
@@ -146,6 +146,6 @@ public:
     uint32_t now = 0;
 };
 
-} // namespace fakes
+}   // namespace fakes
 
-#endif // MQTT_TEST_FAKES_HPP
+#endif   // MQTT_TEST_FAKES_HPP

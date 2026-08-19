@@ -21,4 +21,4 @@ const char* to_string(State s) noexcept
     return "Unknown";
 }
 
-} // namespace mqtt
+}   // namespace mqtt

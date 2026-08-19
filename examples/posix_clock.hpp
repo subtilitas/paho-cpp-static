@@ -30,6 +30,6 @@ public:
     }
 };
 
-} // namespace example
+}   // namespace example
 
-#endif // MQTT_POSIX_CLOCK_HPP
+#endif   // MQTT_POSIX_CLOCK_HPP

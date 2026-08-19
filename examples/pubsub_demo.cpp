@@ -28,25 +28,23 @@ struct DemoConfig : mqtt::DefaultConfig
 };
 
 // Statically allocated, like it would be on the target.
-example::PosixClock       g_clock;
-char                      g_topic[128] = "demo/mqtt-embedded";
-volatile bool             g_running    = true;
+example::PosixClock g_clock;
+char                g_topic[128] = "demo/mqtt-embedded";
+volatile bool       g_running    = true;
 
 // CI runs this as an interop test, so the demo has to be able to fail. Every
 // stage records what it achieved and main() checks the tally at the end;
 // exiting 0 after silently never reaching the broker would make the job green
 // for a client that does not work.
-int      g_echoes       = 0;   ///< our own publishes, received back
-int      g_deliveries   = 0;   ///< QoS 1/2 handshakes the client completed
-bool     g_connected    = false;
+int         g_echoes     = 0;   ///< our own publishes, received back
+int         g_deliveries = 0;   ///< QoS 1/2 handshakes the client completed
+bool        g_connected  = false;
 mqtt::Error g_end_reason = mqtt::Error::Ok;
 
 void print_message(const mqtt::Message& m) noexcept
 {
-    std::printf("  <- [%.*s] qos%d%s %.*s\n",
-                static_cast<int>(m.topic.size()), m.topic.data(),
-                static_cast<int>(m.qos),
-                m.retain ? " (retained)" : "",
+    std::printf("  <- [%.*s] qos%d%s %.*s\n", static_cast<int>(m.topic.size()), m.topic.data(),
+                static_cast<int>(m.qos), m.retain ? " (retained)" : "",
                 static_cast<int>(m.payload.size()),
                 reinterpret_cast<const char*>(m.payload.data()));
 }
@@ -58,7 +56,7 @@ int expect(bool ok, const char* what) noexcept
     return ok ? 0 : 1;
 }
 
-} // namespace
+}   // namespace
 
 int main(int argc, char** argv)
 {
@@ -67,7 +65,7 @@ int main(int argc, char** argv)
     if (argc > 3)
         std::snprintf(g_topic, sizeof(g_topic), "%s", argv[3]);
 
-    static example::PosixTransport transport(host, port);
+    static example::PosixTransport  transport(host, port);
     static mqtt::Client<DemoConfig> client{transport, g_clock};
 
     std::printf("mqtt-embedded demo -> %s:%u, topic '%s'\n", host, port, g_topic);
@@ -82,7 +80,10 @@ int main(int argc, char** argv)
         g_end_reason = e;
         g_running    = false;
     };
-    auto on_message  = [](const mqtt::Message& m) { print_message(m); ++g_echoes; };
+    auto on_message = [](const mqtt::Message& m) {
+        print_message(m);
+        ++g_echoes;
+    };
     auto on_delivery = [](uint16_t id) {
         std::printf("  delivery complete, id %u\n", id);
         ++g_deliveries;
@@ -119,8 +120,8 @@ int main(int argc, char** argv)
 
         if (client.is_connected() && !subscribed)
         {
-            const mqtt::Error e = client.subscribe(etl::string_view(g_topic),
-                                                   mqtt::QoS::AtLeastOnce);
+            const mqtt::Error e =
+                client.subscribe(etl::string_view(g_topic), mqtt::QoS::AtLeastOnce);
             if (e == mqtt::Error::Ok)
             {
                 std::printf("subscribed to '%s'\n", g_topic);
@@ -133,15 +134,15 @@ int main(int argc, char** argv)
         if (client.is_connected() && subscribed &&
             mqtt::elapsed_ms(g_clock.now_ms(), last_pub) >= 1000)
         {
-            char payload[64];
+            char      payload[64];
             const int len = std::snprintf(payload, sizeof(payload),
                                           "hello #%d from mqtt-embedded", published);
 
-            const mqtt::QoS qos = static_cast<mqtt::QoS>(published % 3);
-            const mqtt::Error e = client.publish(
+            const mqtt::QoS   qos = static_cast<mqtt::QoS>(published % 3);
+            const mqtt::Error e   = client.publish(
                 etl::string_view(g_topic),
                 etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload),
-                                         static_cast<size_t>(len)),
+                                           static_cast<size_t>(len)),
                 qos);
 
             if (e == mqtt::Error::Ok)
@@ -195,15 +196,14 @@ int main(int argc, char** argv)
 
     std::printf("\nresults\n");
     int failures = 0;
-    failures += expect(g_connected,           "broker accepted CONNECT");
-    failures += expect(subscribed,            "SUBSCRIBE acknowledged");
-    failures += expect(published == 5,        "published 5 messages at QoS 0, 1 and 2");
-    failures += expect(g_deliveries >= 3,     "QoS 1/2 handshakes completed");
-    failures += expect(g_echoes >= 5,         "all 5 messages came back through the subscription");
-    failures += expect(survived_idle,         "connection held open by keep-alive alone");
-    failures += expect(closed_cleanly,        "DISCONNECT completed and socket closed");
-    failures += expect(g_end_reason == mqtt::Error::Ok,
-                       "session ended without an error");
+    failures += expect(g_connected, "broker accepted CONNECT");
+    failures += expect(subscribed, "SUBSCRIBE acknowledged");
+    failures += expect(published == 5, "published 5 messages at QoS 0, 1 and 2");
+    failures += expect(g_deliveries >= 3, "QoS 1/2 handshakes completed");
+    failures += expect(g_echoes >= 5, "all 5 messages came back through the subscription");
+    failures += expect(survived_idle, "connection held open by keep-alive alone");
+    failures += expect(closed_cleanly, "DISCONNECT completed and socket closed");
+    failures += expect(g_end_reason == mqtt::Error::Ok, "session ended without an error");
 
     if (failures != 0)
     {

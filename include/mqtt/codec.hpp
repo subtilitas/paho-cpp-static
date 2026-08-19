@@ -38,17 +38,15 @@ static constexpr etl::endian kNetworkOrder = etl::endian::big;
 Result<uint32_t> connect_remaining_length(const ConnectOptions& opts) noexcept;
 
 /// Remaining length of a PUBLISH with this topic, payload and QoS.
-Result<uint32_t> publish_remaining_length(etl::string_view topic,
-                                          size_t payload_len,
+Result<uint32_t> publish_remaining_length(etl::string_view topic, size_t payload_len,
                                           QoS qos) noexcept;
 
 /// Remaining length of a SUBSCRIBE covering these subscriptions.
-Result<uint32_t> subscribe_remaining_length(
-    etl::span<const TopicSubscription> subs) noexcept;
+Result<uint32_t> subscribe_remaining_length(etl::span<const TopicSubscription> subs) noexcept;
 
 /// Remaining length of an UNSUBSCRIBE covering these filters.
-Result<uint32_t> unsubscribe_remaining_length(
-    etl::span<const etl::string_view> filters) noexcept;
+Result<uint32_t>
+unsubscribe_remaining_length(etl::span<const etl::string_view> filters) noexcept;
 
 //------------------------------------------------------------------------------
 // Encoding
@@ -57,28 +55,19 @@ Result<uint32_t> unsubscribe_remaining_length(
 // returns the number of bytes written, or an error if `out` was too small.
 //------------------------------------------------------------------------------
 
-Result<size_t> encode_connect(etl::span<uint8_t> out,
-                              const ConnectOptions& opts) noexcept;
+Result<size_t> encode_connect(etl::span<uint8_t> out, const ConnectOptions& opts) noexcept;
 
-Result<size_t> encode_publish(etl::span<uint8_t> out,
-                              etl::string_view topic,
-                              etl::span<const uint8_t> payload,
-                              QoS qos,
-                              bool retain,
-                              bool dup,
+Result<size_t> encode_publish(etl::span<uint8_t> out, etl::string_view topic,
+                              etl::span<const uint8_t> payload, QoS qos, bool retain, bool dup,
                               uint16_t packet_id) noexcept;
 
 /// PUBACK, PUBREC, PUBREL or PUBCOMP -- all share the same two-byte body.
-Result<size_t> encode_ack(etl::span<uint8_t> out,
-                          PacketType type,
-                          uint16_t packet_id) noexcept;
+Result<size_t> encode_ack(etl::span<uint8_t> out, PacketType type, uint16_t packet_id) noexcept;
 
-Result<size_t> encode_subscribe(etl::span<uint8_t> out,
-                                uint16_t packet_id,
+Result<size_t> encode_subscribe(etl::span<uint8_t> out, uint16_t packet_id,
                                 etl::span<const TopicSubscription> subs) noexcept;
 
-Result<size_t> encode_unsubscribe(etl::span<uint8_t> out,
-                                  uint16_t packet_id,
+Result<size_t> encode_unsubscribe(etl::span<uint8_t> out, uint16_t packet_id,
                                   etl::span<const etl::string_view> filters) noexcept;
 
 /// PINGREQ or DISCONNECT -- header only, no body.
@@ -96,8 +85,8 @@ Result<size_t> encode_empty(etl::span<uint8_t> out, PacketType type) noexcept;
 struct PacketPeek
 {
     FixedHeader header;
-    size_t      header_bytes = 0;  ///< size of the fixed header itself
-    size_t      total_bytes  = 0;  ///< header_bytes + header.remaining_length
+    size_t      header_bytes = 0;   ///< size of the fixed header itself
+    size_t      total_bytes  = 0;   ///< header_bytes + header.remaining_length
 };
 
 Result<PacketPeek> peek_header(etl::span<const uint8_t> in) noexcept;
@@ -106,7 +95,7 @@ Result<PacketPeek> peek_header(etl::span<const uint8_t> in) noexcept;
 Result<ConnackInfo> decode_connack(etl::span<const uint8_t> body) noexcept;
 
 /// Decode PUBLISH. Topic and payload in the result view into `body`.
-Result<Message> decode_publish(const FixedHeader& header,
+Result<Message> decode_publish(const FixedHeader&       header,
                                etl::span<const uint8_t> body) noexcept;
 
 /// Decode PUBACK / PUBREC / PUBREL / PUBCOMP / UNSUBACK: a bare packet id.
@@ -138,7 +127,7 @@ Error write_binary(etl::byte_stream_writer& w, etl::span<const uint8_t> d) noexc
 /// Read a length-prefixed UTF-8 string as a view into the stream's buffer.
 Result<etl::string_view> read_string(etl::byte_stream_reader& r) noexcept;
 
-} // namespace codec
-} // namespace mqtt
+}   // namespace codec
+}   // namespace mqtt
 
-#endif // MQTT_CODEC_HPP
+#endif   // MQTT_CODEC_HPP

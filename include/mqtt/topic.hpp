@@ -29,6 +29,6 @@ bool is_valid_filter(etl::string_view filter) noexcept;
 /// Topic names must be non-empty and must contain no wildcard characters.
 bool is_valid_topic_name(etl::string_view name) noexcept;
 
-} // namespace mqtt
+}   // namespace mqtt
 
-#endif // MQTT_TOPIC_HPP
+#endif   // MQTT_TOPIC_HPP

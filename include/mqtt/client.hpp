@@ -60,11 +60,11 @@ namespace mqtt {
 /// Connection lifecycle.
 enum class State : uint8_t
 {
-    Idle,             ///< No connection and none being attempted.
-    Connecting,       ///< Waiting for Transport::connect() to complete.
-    AwaitingConnack,  ///< CONNECT sent, waiting for the broker's CONNACK.
-    Connected,        ///< Session established.
-    Disconnecting,    ///< DISCONNECT queued, draining the transmit queue.
+    Idle,              ///< No connection and none being attempted.
+    Connecting,        ///< Waiting for Transport::connect() to complete.
+    AwaitingConnack,   ///< CONNECT sent, waiting for the broker's CONNACK.
+    Connected,         ///< Session established.
+    Disconnecting,     ///< DISCONNECT queued, draining the transmit queue.
 };
 
 const char* to_string(State s) noexcept;
@@ -73,7 +73,7 @@ namespace detail {
 /// Zero-capacity arrays are not portable, so tables configured to hold nothing
 /// still reserve one slot. The logical limit stays whatever the config says.
 constexpr size_t at_least_one(size_t n) noexcept { return (n > 0) ? n : 1; }
-} // namespace detail
+}   // namespace detail
 
 /// A single-threaded MQTT 3.1.1 client that allocates nothing after
 /// construction.
@@ -113,17 +113,17 @@ public:
     /// Calling subscribe() or unsubscribe() from one would mutate that table
     /// mid-iteration, so don't: set a flag and act on it after step() returns.
     /// publish() is fine, as are all the introspection accessors.
-    using MessageHandler    = etl::delegate<void(const Message&)>;
+    using MessageHandler = etl::delegate<void(const Message&)>;
     /// Handler invoked once the broker has accepted the CONNECT.
-    using ConnectHandler    = etl::delegate<void(const ConnackInfo&)>;
+    using ConnectHandler = etl::delegate<void(const ConnackInfo&)>;
     /// Handler invoked when a session ends, with the reason it ended.
     using DisconnectHandler = etl::delegate<void(Error)>;
     /// Handler invoked when a QoS 1 or QoS 2 publish completes, given its
     /// packet id.
-    using DeliveryHandler   = etl::delegate<void(uint16_t)>;
+    using DeliveryHandler = etl::delegate<void(uint16_t)>;
     /// Handler invoked on SUBACK with the packet id and the broker's granted
     /// QoS for each requested filter.
-    using SubackHandler     = etl::delegate<void(uint16_t, etl::span<const uint8_t>)>;
+    using SubackHandler = etl::delegate<void(uint16_t, etl::span<const uint8_t>)>;
 
     /// Construct a client over a transport and a clock.
     ///
@@ -132,8 +132,7 @@ public:
     ///
     /// @param transport The byte stream to run MQTT over. See transport.hpp.
     /// @param clock     A monotonic millisecond source; it may wrap.
-    Client(Transport& transport, Clock& clock) noexcept
-        : transport_(transport), clock_(clock)
+    Client(Transport& transport, Clock& clock) noexcept : transport_(transport), clock_(clock)
     {
     }
 
@@ -207,10 +206,9 @@ public:
         if (opts.clean_session)
             reset_session_state();
 
-        const Error e = enqueue_sized(packet_size(rl.value()),
-                                      [&](etl::span<uint8_t> out) {
-                                          return codec::encode_connect(out, opts);
-                                      });
+        const Error e = enqueue_sized(packet_size(rl.value()), [&](etl::span<uint8_t> out) {
+            return codec::encode_connect(out, opts);
+        });
         if (e != Error::Ok)
             return e;
 
@@ -270,10 +268,8 @@ public:
     /// Error::PayloadTooLarge when the packet exceeds max_persisted_msg_size.
     ///
     /// @param out_packet_id Optional; receives the assigned id for QoS > 0.
-    Error publish(etl::string_view topic,
-                  etl::span<const uint8_t> payload,
-                  QoS qos = QoS::AtMostOnce,
-                  bool retain = false,
+    Error publish(etl::string_view topic, etl::span<const uint8_t> payload,
+                  QoS qos = QoS::AtMostOnce, bool retain = false,
                   uint16_t* out_packet_id = nullptr) noexcept
     {
         if (state_ != State::Connected)
@@ -309,9 +305,9 @@ public:
         // Serialize into the slot's retransmission buffer first; if it does not
         // fit there we must reject the publish outright, because we could not
         // honour the delivery guarantee later.
-        const Result<size_t> n = codec::encode_publish(
-            etl::span<uint8_t>(slot->packet.data(), slot->packet.size()),
-            topic, payload, qos, retain, false, id);
+        const Result<size_t> n =
+            codec::encode_publish(etl::span<uint8_t>(slot->packet.data(), slot->packet.size()),
+                                  topic, payload, qos, retain, false, id);
         if (!n.ok())
             return (n.error() == Error::BufferTooSmall) ? Error::PayloadTooLarge : n.error();
 
@@ -332,11 +328,8 @@ public:
     }
 
     /// Convenience overload for text payloads.
-    Error publish(etl::string_view topic,
-                  etl::string_view payload,
-                  QoS qos = QoS::AtMostOnce,
-                  bool retain = false,
-                  uint16_t* out_packet_id = nullptr) noexcept
+    Error publish(etl::string_view topic, etl::string_view payload, QoS qos = QoS::AtMostOnce,
+                  bool retain = false, uint16_t* out_packet_id = nullptr) noexcept
     {
         return publish(topic,
                        etl::span<const uint8_t>(
@@ -349,10 +342,9 @@ public:
     /// The filter is copied into the subscription table, so the caller's string
     /// need not outlive the call. The subscription is retained across
     /// reconnects and re-sent automatically.
-    Error subscribe(etl::string_view filter,
-                    QoS qos = QoS::AtMostOnce,
-                    MessageHandler handler = MessageHandler(),
-                    uint16_t* out_packet_id = nullptr) noexcept
+    Error subscribe(etl::string_view filter, QoS qos = QoS::AtMostOnce,
+                    MessageHandler handler       = MessageHandler(),
+                    uint16_t*      out_packet_id = nullptr) noexcept
     {
         const TopicSubscription one{filter, qos};
         return subscribe(etl::span<const TopicSubscription>(&one, 1), handler, out_packet_id);
@@ -362,8 +354,8 @@ public:
     /// `handler`; pass a default-constructed handler to route them to the
     /// on_message fallback instead.
     Error subscribe(etl::span<const TopicSubscription> subs,
-                    MessageHandler handler = MessageHandler(),
-                    uint16_t* out_packet_id = nullptr) noexcept
+                    MessageHandler                     handler       = MessageHandler(),
+                    uint16_t*                          out_packet_id = nullptr) noexcept
     {
         if (state_ != State::Connected)
             return Error::NotConnected;
@@ -450,7 +442,7 @@ public:
     }
 
     Error unsubscribe(etl::span<const etl::string_view> filters,
-                      uint16_t* out_packet_id = nullptr) noexcept
+                      uint16_t*                         out_packet_id = nullptr) noexcept
     {
         if (state_ != State::Connected)
             return Error::NotConnected;
@@ -576,7 +568,7 @@ public:
     //--------------------------------------------------------------------------
 
     State state() const noexcept { return state_; }
-    bool is_connected() const noexcept { return state_ == State::Connected; }
+    bool  is_connected() const noexcept { return state_ == State::Connected; }
 
     /// Reason the last session ended, or the CONNECT failure reason.
     Error last_error() const noexcept { return last_error_; }
@@ -630,9 +622,9 @@ private:
     enum class Phase : uint8_t
     {
         Free,
-        WaitPuback,   ///< QoS 1: PUBLISH sent
-        WaitPubrec,   ///< QoS 2: PUBLISH sent
-        WaitPubcomp,  ///< QoS 2: PUBREL sent
+        WaitPuback,    ///< QoS 1: PUBLISH sent
+        WaitPubrec,    ///< QoS 2: PUBLISH sent
+        WaitPubcomp,   ///< QoS 2: PUBREL sent
     };
 
     static constexpr size_t kOutSlots    = detail::at_least_one(Cfg::max_inflight_out);
@@ -647,17 +639,17 @@ private:
     struct OutboundSlot
     {
         etl::array<uint8_t, kPersistSize> packet{};
-        uint16_t packet_id    = 0;
-        uint16_t packet_len   = 0;
-        uint32_t last_sent_ms = 0;
-        QoS      qos          = QoS::AtMostOnce;
-        Phase    phase        = Phase::Free;
+        uint16_t                          packet_id    = 0;
+        uint16_t                          packet_len   = 0;
+        uint32_t                          last_sent_ms = 0;
+        QoS                               qos          = QoS::AtMostOnce;
+        Phase                             phase        = Phase::Free;
     };
 
     struct Subscription
     {
         etl::string<Cfg::max_topic_len> filter;
-        MessageHandler handler;
+        MessageHandler                  handler;
         /// Identity that survives table compaction. A SUBACK that refuses a
         /// filter erases an entry and shifts every entry after it, so a
         /// position recorded when the request was sent is worthless by the
@@ -674,9 +666,9 @@ private:
     {
         /// sub_ids of the subscriptions this request covers, in wire order.
         etl::vector<uint16_t, Cfg::max_topics_per_request> subs;
-        uint32_t   sent_ms   = 0;
-        uint16_t   packet_id = 0;
-        PacketType expected  = PacketType::Reserved;
+        uint32_t                                           sent_ms   = 0;
+        uint16_t                                           packet_id = 0;
+        PacketType                                         expected  = PacketType::Reserved;
     };
 
     static constexpr size_t packet_size(uint32_t remaining_length) noexcept
@@ -726,8 +718,8 @@ private:
     {
         while (!tx_.empty())
         {
-            const etl::span<const uint8_t> out = tx_.peek();
-            size_t written = 0;
+            const etl::span<const uint8_t> out     = tx_.peek();
+            size_t                         written = 0;
 
             const Error e = transport_.send(out, written);
             if (e == Error::WouldBlock)
@@ -758,9 +750,10 @@ private:
         {
             if (rx_len_ < Cfg::rx_buffer_size)
             {
-                size_t read = 0;
-                const Error e = transport_.recv(
-                    etl::span<uint8_t>(rx_.data() + rx_len_, Cfg::rx_buffer_size - rx_len_), read);
+                size_t      read = 0;
+                const Error e    = transport_.recv(
+                    etl::span<uint8_t>(rx_.data() + rx_len_, Cfg::rx_buffer_size - rx_len_),
+                    read);
 
                 if (e == Error::WouldBlock)
                 {
@@ -813,7 +806,7 @@ private:
                 return Error::PacketTooLarge;
 
             if (rx_len_ < p.total_bytes)
-                return Error::Ok;       // body still arriving
+                return Error::Ok;   // body still arriving
 
             const etl::span<const uint8_t> body(rx_.data() + p.header_bytes,
                                                 p.header.remaining_length);
@@ -836,13 +829,13 @@ private:
     {
         switch (h.type)
         {
-            case PacketType::Connack:  return handle_connack(body);
-            case PacketType::Publish:  return handle_publish(h, body);
-            case PacketType::Puback:   return handle_puback(body);
-            case PacketType::Pubrec:   return handle_pubrec(body);
-            case PacketType::Pubrel:   return handle_pubrel(body);
-            case PacketType::Pubcomp:  return handle_pubcomp(body);
-            case PacketType::Suback:   return handle_suback(body);
+            case PacketType::Connack: return handle_connack(body);
+            case PacketType::Publish: return handle_publish(h, body);
+            case PacketType::Puback: return handle_puback(body);
+            case PacketType::Pubrec: return handle_pubrec(body);
+            case PacketType::Pubrel: return handle_pubrel(body);
+            case PacketType::Pubcomp: return handle_pubcomp(body);
+            case PacketType::Suback: return handle_suback(body);
             case PacketType::Unsuback: return handle_unsuback(body);
             case PacketType::Pingresp:
                 if (!body.empty())
@@ -857,8 +850,7 @@ private:
             case PacketType::Pingreq:
             case PacketType::Disconnect:
             case PacketType::Reserved:
-            default:
-                return Error::ProtocolViolation;
+            default: return Error::ProtocolViolation;
         }
     }
 
@@ -910,9 +902,7 @@ private:
 
         switch (m.qos)
         {
-            case QoS::AtMostOnce:
-                dispatch(m);
-                return Error::Ok;
+            case QoS::AtMostOnce: dispatch(m); return Error::Ok;
 
             case QoS::AtLeastOnce:
             {
@@ -999,9 +989,9 @@ private:
         {
             // From here on the retransmission unit is PUBREL, not the original
             // PUBLISH, so overwrite the stored packet with it.
-            const Result<size_t> n = codec::encode_ack(
-                etl::span<uint8_t>(slot->packet.data(), slot->packet.size()),
-                PacketType::Pubrel, id.value());
+            const Result<size_t> n =
+                codec::encode_ack(etl::span<uint8_t>(slot->packet.data(), slot->packet.size()),
+                                  PacketType::Pubrel, id.value());
             if (!n.ok())
                 return n.error();
 
@@ -1012,8 +1002,8 @@ private:
             // the slot, so pump_retransmit() will put it out once there is
             // room. Only stamp the clock on success, so the retry timer starts
             // from the last actual transmission rather than from this attempt.
-            if (enqueue(etl::span<const uint8_t>(slot->packet.data(), slot->packet_len))
-                == Error::Ok)
+            if (enqueue(etl::span<const uint8_t>(slot->packet.data(), slot->packet_len)) ==
+                Error::Ok)
                 slot->last_sent_ms = clock_.now_ms();
             else
                 ++tx_backpressure_count_;
@@ -1024,8 +1014,8 @@ private:
         if (slot->phase == Phase::WaitPubcomp)
         {
             // Duplicate PUBREC; re-send PUBREL and move on.
-            if (enqueue(etl::span<const uint8_t>(slot->packet.data(), slot->packet_len))
-                == Error::Ok)
+            if (enqueue(etl::span<const uint8_t>(slot->packet.data(), slot->packet_len)) ==
+                Error::Ok)
                 slot->last_sent_ms = clock_.now_ms();
             else
                 ++tx_backpressure_count_;
@@ -1199,13 +1189,13 @@ private:
             OutboundSlot& slot = outbound_[i];
             if (slot.phase == Phase::Free)
                 continue;
-            if (!forced &&
-                (Cfg::retry_interval_ms == 0 ||
-                 elapsed_ms(now, slot.last_sent_ms) < Cfg::retry_interval_ms))
+            if (!forced && (Cfg::retry_interval_ms == 0 ||
+                            elapsed_ms(now, slot.last_sent_ms) < Cfg::retry_interval_ms))
                 continue;
 
             mark_dup(slot);
-            if (enqueue(etl::span<const uint8_t>(slot.packet.data(), slot.packet_len)) == Error::Ok)
+            if (enqueue(etl::span<const uint8_t>(slot.packet.data(), slot.packet_len)) ==
+                Error::Ok)
                 slot.last_sent_ms = now;
         }
     }
@@ -1236,8 +1226,8 @@ private:
         if (batch.empty())
             return;
 
-        const Result<uint32_t> rl =
-            codec::subscribe_remaining_length(etl::span<const TopicSubscription>(batch.data(), batch.size()));
+        const Result<uint32_t> rl = codec::subscribe_remaining_length(
+            etl::span<const TopicSubscription>(batch.data(), batch.size()));
         if (!rl.ok())
             return;
 
@@ -1371,9 +1361,8 @@ private:
     {
         for (uint32_t tries = 0; tries < 65535u; ++tries)
         {
-            next_sub_id_ = (next_sub_id_ == 65535u)
-                               ? 1u
-                               : static_cast<uint16_t>(next_sub_id_ + 1u);
+            next_sub_id_ =
+                (next_sub_id_ == 65535u) ? 1u : static_cast<uint16_t>(next_sub_id_ + 1u);
             if (find_by_sub_id(next_sub_id_) == nullptr)
                 return next_sub_id_;
         }
@@ -1416,9 +1405,8 @@ private:
     {
         for (uint32_t tries = 0; tries < 65535u; ++tries)
         {
-            next_packet_id_ = (next_packet_id_ == 65535u)
-                                  ? 1u
-                                  : static_cast<uint16_t>(next_packet_id_ + 1u);
+            next_packet_id_ =
+                (next_packet_id_ == 65535u) ? 1u : static_cast<uint16_t>(next_packet_id_ + 1u);
             if (!packet_id_in_use(next_packet_id_))
                 return next_packet_id_;
         }
@@ -1487,14 +1475,14 @@ private:
     Transport& transport_;
     Clock&     clock_;
 
-    TxQueue<Cfg::tx_buffer_size>            tx_{};
+    TxQueue<Cfg::tx_buffer_size>             tx_{};
     etl::array<uint8_t, Cfg::rx_buffer_size> rx_{};
     size_t                                   rx_len_ = 0;
 
-    etl::array<OutboundSlot, kOutSlots>            outbound_{};
-    etl::vector<uint16_t, kInSlots>                inbound_ids_{};
-    etl::vector<Subscription, kSubSlots>           subscriptions_{};
-    etl::vector<PendingAck, kAckSlots>             pending_{};
+    etl::array<OutboundSlot, kOutSlots>  outbound_{};
+    etl::vector<uint16_t, kInSlots>      inbound_ids_{};
+    etl::vector<Subscription, kSubSlots> subscriptions_{};
+    etl::vector<PendingAck, kAckSlots>   pending_{};
 
     // etl::delegate default-constructs to "unset"; no initialiser needed.
     MessageHandler    on_message_;
@@ -1507,20 +1495,20 @@ private:
     State       state_      = State::Idle;
     Error       last_error_ = Error::Ok;
 
-    uint32_t keep_alive_ms_      = 0;
-    uint32_t last_sent_ms_       = 0;
-    uint32_t last_received_ms_   = 0;
-    uint32_t ping_sent_ms_       = 0;
-    uint32_t connect_started_ms_ = 0;
+    uint32_t keep_alive_ms_          = 0;
+    uint32_t last_sent_ms_           = 0;
+    uint32_t last_received_ms_       = 0;
+    uint32_t ping_sent_ms_           = 0;
+    uint32_t connect_started_ms_     = 0;
     uint32_t inbound_overflow_count_ = 0;
     uint32_t tx_backpressure_count_  = 0;
-    uint16_t next_packet_id_     = 0;
-    uint16_t next_sub_id_        = 0;
-    bool     ping_outstanding_   = false;
-    bool     clean_session_      = true;
-    bool     retransmit_now_     = false;
+    uint16_t next_packet_id_         = 0;
+    uint16_t next_sub_id_            = 0;
+    bool     ping_outstanding_       = false;
+    bool     clean_session_          = true;
+    bool     retransmit_now_         = false;
 };
 
-} // namespace mqtt
+}   // namespace mqtt
 
-#endif // MQTT_CLIENT_HPP
+#endif   // MQTT_CLIENT_HPP

@@ -101,6 +101,6 @@ private:
     size_t  tail_             = 0;
 };
 
-} // namespace mqtt
+}   // namespace mqtt
 
-#endif // MQTT_TX_QUEUE_HPP
+#endif   // MQTT_TX_QUEUE_HPP

@@ -33,8 +33,7 @@ void check_names(Fn to_name, unsigned count, const char* fallback) noexcept
 
         if (std::strcmp(name, fallback) == 0)
         {
-            th::report_failure("enumerator has no case of its own",
-                               __FILE__, __LINE__);
+            th::report_failure("enumerator has no case of its own", __FILE__, __LINE__);
             std::printf("    value %u fell through to \"%s\"\n", i, fallback);
             continue;
         }
@@ -43,8 +42,7 @@ void check_names(Fn to_name, unsigned count, const char* fallback) noexcept
         {
             if (seen[j] != nullptr && std::strcmp(seen[j], name) == 0)
             {
-                th::report_failure("two enumerators share a name",
-                                   __FILE__, __LINE__);
+                th::report_failure("two enumerators share a name", __FILE__, __LINE__);
                 std::printf("    values %u and %u are both \"%s\"\n", j, i, name);
             }
         }
@@ -52,13 +50,12 @@ void check_names(Fn to_name, unsigned count, const char* fallback) noexcept
     }
 }
 
-} // namespace
+}   // namespace
 
 TEST(to_string_names_every_packet_type)
 {
     // Reserved(0) through Disconnect(14).
-    check_names<PacketType>([](PacketType t) { return to_string(t); },
-                            15u, "UNKNOWN");
+    check_names<PacketType>([](PacketType t) { return to_string(t); }, 15u, "UNKNOWN");
 
     // A value off the end of the enumeration still has to be printable.
     CHECK(std::strcmp(to_string(static_cast<PacketType>(15)), "UNKNOWN") == 0);
@@ -66,11 +63,10 @@ TEST(to_string_names_every_packet_type)
 
 TEST(to_string_names_every_connack_code)
 {
-    check_names<ConnackCode>([](ConnackCode c) { return to_string(c); },
-                             6u, "Unknown CONNACK code");
+    check_names<ConnackCode>([](ConnackCode c) { return to_string(c); }, 6u,
+                             "Unknown CONNACK code");
 
-    CHECK(std::strcmp(to_string(static_cast<ConnackCode>(6)),
-                      "Unknown CONNACK code") == 0);
+    CHECK(std::strcmp(to_string(static_cast<ConnackCode>(6)), "Unknown CONNACK code") == 0);
 }
 
 TEST(to_string_names_every_error)
@@ -108,8 +104,7 @@ TEST(is_retryable_covers_only_the_flow_control_codes)
             continue;
         if (is_retryable(e))
         {
-            th::report_failure("non-flow-control code reported retryable",
-                               __FILE__, __LINE__);
+            th::report_failure("non-flow-control code reported retryable", __FILE__, __LINE__);
             std::printf("    %s\n", to_string(e));
         }
     }
