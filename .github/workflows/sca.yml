@@ -1,0 +1,241 @@
+# Static analysis: CodeQL, clang-tidy and clang-format.
+#
+# Report first, gate after triage.
+# ------------------------------------
+# Every job here starts advisory. They run on every push and pull request,
+# publish what they found, and go green regardless. Nothing is gated until
+# somebody has read the findings and decided which of them are real, because a
+# check that fails on day one for two hundred pre-existing reasons teaches
+# people to ignore it, and then it is worse than not having it.
+#
+# To gate one, flip its switch in `env` below. They are independent on purpose:
+# clang-tidy is close to clean and can go first, while clang-format currently
+# disagrees with the tree on every file and needs a decision before it can ever
+# be blocking. See docs/static-analysis.md for the state of that triage.
+#
+# CodeQL has no switch here. It publishes to the Security tab and gating it is
+# a branch-protection setting -- Settings -> Branches -> Require code scanning
+# results -- which is the right place for it, since the severity threshold is a
+# repository policy rather than a workflow detail.
+
+name: SCA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # CodeQL's queries are updated independently of this repository, so a
+    # weekly run catches findings that appear without anything here changing.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: sca-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ETL_TAG: 20.39.4
+
+  # Pinned for the same reason gcovr is: an analyser that changes its mind
+  # between runs produces diffs nobody asked for and failures nobody can
+  # reproduce.
+  CLANG_VERSION: "18.1.8"
+
+  # ---- the gates -------------------------------------------------------
+  # "false" = report only. Flip to "true" once the findings are triaged.
+  GATE_CLANG_TIDY: "false"
+  GATE_CLANG_FORMAT: "false"
+
+jobs:
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-codeql-${{ env.ETL_TAG }}
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          # Autobuild would work, but this project needs a specific CMake
+          # invocation -- exceptions and RTTI off, ETL fetched -- and analysing
+          # a build that is not the build we ship would be analysing fiction.
+          build-mode: manual
+          queries: security-and-quality
+
+      - name: Build
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMQTT_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-tidy-${{ env.ETL_TAG }}
+
+      - name: Install clang-tidy
+        run: pipx install "clang-tidy==${{ env.CLANG_VERSION }}"
+
+      # clang-tidy needs to know how each file is compiled. The flags matter
+      # here more than usual: -fno-exceptions changes which paths exist.
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DMQTT_BUILD_EXAMPLES=OFF
+
+      - name: Run
+        id: tidy
+        run: |
+          set -uo pipefail
+
+          # The four .cpp files pull in every header, and HeaderFilterRegex in
+          # .clang-tidy limits reporting to include/mqtt, so this covers the
+          # library without also analysing the tests or the fetched ETL.
+          clang-tidy -p build --quiet $(git ls-files 'src/*.cpp') \
+            2>/dev/null | tee clang-tidy.log
+          rc=${PIPESTATUS[0]}
+
+          count=$(grep -cE 'warning:|error:' clang-tidy.log || true)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "rc=$rc"       >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### clang-tidy"
+            echo
+            echo "${{ steps.tidy.outputs.count }} finding(s)."
+            echo
+            if [ -s clang-tidy.log ]; then
+              echo '```'
+              grep -E 'warning:|error:' clang-tidy.log | sed 's|.*/paho-cpp-static/||' || true
+              echo '```'
+            fi
+            echo
+            if [ "${GATE_CLANG_TIDY}" = "true" ]; then
+              echo "_Gating: findings fail this job._"
+            else
+              echo "_Advisory: reporting only. Set GATE_CLANG_TIDY to \`true\` in \`.github/workflows/sca.yml\` to gate._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: clang-tidy-log
+          path: clang-tidy.log
+
+      - name: Gate
+        if: always()
+        run: |
+          if [ "${GATE_CLANG_TIDY}" != "true" ]; then
+            echo "Advisory run: ${{ steps.tidy.outputs.count }} finding(s), not failing."
+            exit 0
+          fi
+          if [ "${{ steps.tidy.outputs.count }}" != "0" ]; then
+            echo "clang-tidy reported ${{ steps.tidy.outputs.count }} finding(s)."
+            exit 1
+          fi
+          echo "clang-tidy is clean."
+
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install clang-format
+        run: pipx install "clang-format==${{ env.CLANG_VERSION }}"
+
+      - name: Check
+        id: fmt
+        run: |
+          set -uo pipefail
+
+          : > format.diff
+          files=0
+          for f in $(git ls-files '*.cpp' '*.hpp'); do
+            if ! clang-format --style=file "$f" | diff -u --label "a/$f" --label "b/$f" "$f" - >> format.diff; then
+              files=$((files + 1))
+            fi
+          done
+
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "$files file(s) differ from .clang-format"
+          exit 0
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### clang-format"
+            echo
+            echo "${{ steps.fmt.outputs.files }} file(s) differ from \`.clang-format\`."
+            echo
+            echo "The attached \`format.diff\` is a directly applicable patch:"
+            echo
+            echo '```bash'
+            echo "git apply format.diff        # or:"
+            echo "clang-format -i \$(git ls-files '*.cpp' '*.hpp')"
+            echo '```'
+            echo
+            if [ "${GATE_CLANG_FORMAT}" = "true" ]; then
+              echo "_Gating: any difference fails this job._"
+            else
+              echo "_Advisory: reporting only. The full diff is attached as an artefact._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the diff
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: format-diff
+          path: format.diff
+
+      - name: Gate
+        if: always()
+        run: |
+          if [ "${GATE_CLANG_FORMAT}" != "true" ]; then
+            echo "Advisory run: ${{ steps.fmt.outputs.files }} file(s) differ, not failing."
+            exit 0
+          fi
+          if [ "${{ steps.fmt.outputs.files }}" != "0" ]; then
+            echo "${{ steps.fmt.outputs.files }} file(s) are not formatted."
+            exit 1
+          fi
+          echo "Formatting is clean."

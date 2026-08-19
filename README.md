@@ -247,6 +247,10 @@ Also verified:
 - Clean under `-fsanitize=address,undefined`.
 - Clean under `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion
   -Wold-style-cast -Wcast-align`.
+- CodeQL, clang-tidy and clang-format run on every push. They are advisory
+  while their findings are triaged, rather than gating from day one on a
+  backlog nobody has read — see
+  [docs/static-analysis.md](docs/static-analysis.md) for where that has got to.
 - `nm` on the library and on a full `Client` instantiation shows no reference to
   `malloc`, `operator new`, `__cxa_throw`, `_Unwind_*` or any typeinfo symbol.
 - Interoperates with Mosquitto at QoS 0/1/2 in both directions, with the
@@ -273,6 +277,7 @@ from the suite itself — so none of them can quietly drift out of date.
 | [docs/porting.md](docs/porting.md) | implementing `Transport` and `Clock`, platform notes, TLS, how to verify a port |
 | [docs/configuration.md](docs/configuration.md) | every config knob, sizing guidance, worked profiles |
 | [docs/comparison-with-paho.md](docs/comparison-with-paho.md) | differences from Eclipse Paho MQTT C and the reasoning |
+| [docs/static-analysis.md](docs/static-analysis.md) | CodeQL, clang-tidy and clang-format: what they report and the state of the triage |
 
 ## Layout
 
