@@ -1,8 +1,8 @@
 # Static analysis
 
 Three analysers run in `.github/workflows/sca.yml`: CodeQL, clang-tidy and
-clang-format. clang-tidy **gates**; the other two are **advisory** — they report
-on every push and pull request and go green regardless.
+clang-format. clang-tidy and clang-format **gate**; CodeQL is **advisory** — it
+reports to the Security tab and does not fail the build.
 
 That is deliberate. A check that fails on day one for hundreds of pre-existing
 reasons does not get fixed; it gets ignored, and an ignored red check is worse
@@ -14,9 +14,9 @@ This page records where that triage has got to.
 
 | Analyser | State | Findings | Blocker before gating |
 |---|---|---|---|
-| CodeQL | advisory | see the Security tab | none known |
-| **clang-tidy** | **gating** | **0** | — triaged to zero, see below |
-| clang-format | advisory | 29 of 29 files | `.clang-format` does not describe the code |
+| CodeQL | advisory | see the Security tab | gating is a branch-protection setting |
+| **clang-tidy** | **gating** | **0** | — |
+| **clang-format** | **gating** | **0** | — |
 
 ## Turning a gate on
 
@@ -24,8 +24,8 @@ Each analyser has its own switch in the workflow's `env` block, so they can be
 gated one at a time as they come clean:
 
 ```yaml
-GATE_CLANG_TIDY: "true"      # on: the backlog was triaged to zero
-GATE_CLANG_FORMAT: "false"   # -> "true" once .clang-format is settled
+GATE_CLANG_TIDY: "true"
+GATE_CLANG_FORMAT: "true"
 ```
 
 CodeQL has no switch. It publishes to the Security tab, and gating it belongs
@@ -71,11 +71,17 @@ finding is a regression in the change that introduced it.
 - `performance-enum-size` — `Error` was `int16_t` for twenty-three values. Now
   `uint8_t`, which packs better against the neighbouring members and takes
   **eight bytes off every configuration**: `Client<DefaultConfig>` went 4608 →
-  4600, and the small and large profiles likewise. This is an API-visible
-  change to a public enum, taken deliberately: the project is 0.1.0, is
-  consumed from source via `add_subdirectory`/`FetchContent`, ships no
-  `install(EXPORT)` and makes no ABI promise. Reverting is one line if that
-  ever stops being true.
+  4600, and the small and large profiles likewise.
+
+  This is an API-visible change to a public enum, and it was first justified
+  here on the grounds that the project was 0.1.0. That was wrong — it is 1.x.
+  The change still stands, on the better reason: there is no ABI to break.
+  The library is consumed from source via `add_subdirectory` or `FetchContent`,
+  ships no `install(EXPORT)` and no shared library, and every consumer
+  therefore recompiles against the header that declares the enum. Code that
+  stores an `Error` in an explicitly-typed field is the only thing affected,
+  and it is a recompile, not a silent misbehaviour. Released in 1.5.0 and
+  called out as breaking; reverting is one line if that ever stops holding.
 
 **Declined, and silenced in `.clang-tidy` with the reasoning recorded**
 
@@ -90,42 +96,47 @@ finding is a regression in the change that introduced it.
 
 ## clang-format
 
-**Every one of the 29 source files differs from the committed
-`.clang-format`** — about 1360 lines. The config was added but never applied,
-so the file describes an intention rather than the code.
+Resolved. The tree is formatted and the check gates, so it cannot drift again.
 
-Reformatting the tree is not the first move, because the config is at least
-partly wrong. Verified with clang-format 14, 16, 18 and 20, which agree to
-within twenty lines, so this is not a version artefact.
+The problem was not that the code was untidy: **every one of the 29 files
+differed from the committed `.clang-format`**, about 1360 lines, because the
+config had been added and never applied. It described an intention. Three of
+its rules disagreed with the entire codebase, which is why reformatting first
+would have been the wrong move — it would have baked in the wrong answer and
+produced a second churn commit later.
 
-The differences fall into three groups:
+What it took, in order:
 
-1. **Namespace braces.** `BreakBeforeBraces: Allman` puts the brace of
-   `namespace mqtt {` on its own line; every file writes it inline. Setting
-   `BraceWrapping.AfterNamespace: false` (with `BreakBeforeBraces: Custom`)
-   matches what is actually written and removes ~160 lines of the diff.
+1. **`BreakBeforeBraces: Allman`** put the brace of `namespace mqtt {` on its
+   own line. No file does that. Allman is a preset with no way to override a
+   single member, so it is now spelled out as `Custom` with
+   `AfterNamespace: false` and every other value copied from Allman verbatim.
+   Worth roughly 160 lines of the diff.
 
-2. **Trailing comment columns.** `SpacesBeforeTrailingComments` shifts `///<`
-   comments by a column or two throughout. Cosmetic, and whichever way it goes
-   it should be decided once.
+2. **`AllowShortFunctionsOnASingleLine: Inline`** expanded `at_least_one`,
+   `utf8_size`, `valid_qos` and the `operator new` overloads, all of which are
+   written on one line. `All` reproduces what is already there and — checked
+   file by file — collapses nothing that was written expanded.
 
-3. **Hand-aligned `case` labels.** The `to_string` switches align their
-   returns into a column. clang-format has no option that preserves this and
-   will collapse it. This is the only group where reformatting actively makes
-   the code less readable — `// clang-format off` around those switches is the
-   usual answer.
+3. **Deliberate alignment clang-format cannot express** is marked
+   `// clang-format off`: the `to_string` switch tables, the flag-bit
+   assignments in `FixedHeader::to_byte`, and the golden wire-byte tables in
+   the codec tests. Those columns are the documentation; collapsing them loses
+   the thing being documented. Note that the directive must be exactly
+   `// clang-format off` — a trailing explanation on the same line silently
+   makes it an ordinary comment, so the reason goes on the line above.
 
-Suggested order: fix (1) in the config, decide (2), mark (3) off, then reformat
-in a single commit that touches nothing else, and gate immediately afterwards
-so it never drifts again. Doing the reformat *before* fixing the config would
-bake in the wrong answer and produce a second churn commit later.
+Then `clang-format -i` over everything, as its own commit touching nothing
+else, so it can be skipped when reading history or bisecting.
 
-The reformat itself is safe to do whenever the config is settled: applying the
-current diff wholesale leaves a tree that builds clean under `-Werror` and
-passes all tests, so the only thing at stake is readability, not behaviour.
-The job attaches `format.diff` as an artefact, and it is a directly applicable
-patch — `git apply format.diff` — so the change can be reviewed before anyone
-commits to it.
+Two things checked before and after, because a whole-tree reformat is
+otherwise an act of faith: the residual difference is zero, and the tree still
+builds clean under `-Werror`, passes all tests, stays clean under ASan and
+UBSan, keeps `sizeof(Client<Cfg>)` unchanged, and holds its coverage floor.
+
+`AlignConsecutiveDeclarations: Consecutive` was left alone deliberately. It
+occasionally pads a declaration oddly, but turning it off costs more churn than
+it saves (1326 lines versus 1172), because the codebase does align its members.
 
 ---
 

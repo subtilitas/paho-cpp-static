@@ -48,12 +48,10 @@ env:
   # ---- the gates -------------------------------------------------------
   # "false" = report only. Flip to "true" once the findings are triaged.
   #
-  # clang-tidy is gated: its backlog was triaged to zero, so any new finding is
-  # a regression introduced by the change in front of you.
-  # clang-format is not, and cannot be until .clang-format is made to describe
-  # the code it is checking. See docs/static-analysis.md.
+  # Both gated: each backlog was triaged to zero first, so a finding now means
+  # the change in front of you introduced it. See docs/static-analysis.md.
   GATE_CLANG_TIDY: "true"
-  GATE_CLANG_FORMAT: "false"
+  GATE_CLANG_FORMAT: "true"
 
 jobs:
   codeql:
