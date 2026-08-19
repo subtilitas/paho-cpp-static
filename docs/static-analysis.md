@@ -73,15 +73,15 @@ finding is a regression in the change that introduced it.
   **eight bytes off every configuration**: `Client<DefaultConfig>` went 4608 →
   4600, and the small and large profiles likewise.
 
-  This is an API-visible change to a public enum, and it was first justified
-  here on the grounds that the project was 0.1.0. That was wrong — it is 1.x.
-  The change still stands, on the better reason: there is no ABI to break.
-  The library is consumed from source via `add_subdirectory` or `FetchContent`,
-  ships no `install(EXPORT)` and no shared library, and every consumer
-  therefore recompiles against the header that declares the enum. Code that
-  stores an `Error` in an explicitly-typed field is the only thing affected,
-  and it is a recompile, not a silent misbehaviour. Released in 1.5.0 and
-  called out as breaking; reverting is one line if that ever stops holding.
+  This is an API-visible change to a public enum, and it rests on two things.
+  The version line is 0.x, where a breaking change is what a minor bump is
+  for. And there is no ABI to break in any case: the library is consumed from
+  source via `add_subdirectory` or `FetchContent` and ships no shared library
+  and no `install(EXPORT)`, so every consumer recompiles against the header
+  that declares the enum. Only code storing an `Error` in an explicitly
+  `int16_t`-typed field is affected, and it fails to compile rather than
+  misbehaving quietly. Released in 0.2.0 and called out as breaking;
+  reverting is one line if either of those ever stops holding.
 
 **Declined, and silenced in `.clang-tidy` with the reasoning recorded**
 
