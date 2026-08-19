@@ -6,6 +6,9 @@ namespace mqtt {
 
 const char* to_string(PacketType t) noexcept
 {
+    // The returns are aligned into a column on purpose; clang-format has no
+    // option that preserves it, so it is switched off across the table.
+    // clang-format off
     switch (t)
     {
         case PacketType::Reserved:    return "RESERVED";
@@ -24,11 +27,15 @@ const char* to_string(PacketType t) noexcept
         case PacketType::Pingresp:    return "PINGRESP";
         case PacketType::Disconnect:  return "DISCONNECT";
     }
+    // clang-format on
     return "UNKNOWN";
 }
 
 const char* to_string(ConnackCode c) noexcept
 {
+    // The returns are aligned into a column on purpose; clang-format has no
+    // option that preserves it, so it is switched off across the table.
+    // clang-format off
     switch (c)
     {
         case ConnackCode::Accepted:                    return "Accepted";
@@ -38,11 +45,15 @@ const char* to_string(ConnackCode c) noexcept
         case ConnackCode::BadUsernameOrPassword:       return "Bad user name or password";
         case ConnackCode::NotAuthorized:               return "Not authorized";
     }
+    // clang-format on
     return "Unknown CONNACK code";
 }
 
 const char* to_string(Error e) noexcept
 {
+    // The returns are aligned into a column on purpose; clang-format has no
+    // option that preserves it, so it is switched off across the table.
+    // clang-format off
     switch (e)
     {
         case Error::Ok:                 return "Ok";
@@ -69,6 +80,7 @@ const char* to_string(Error e) noexcept
         case Error::TransportFailure:   return "TransportFailure";
         case Error::TransportClosed:    return "TransportClosed";
     }
+    // clang-format on
     return "Unknown";
 }
 
@@ -82,9 +94,13 @@ uint8_t FixedHeader::to_byte() const noexcept
 
     if (type == PacketType::Publish)
     {
+        // The flag bits line up with the diagram in section 2.2.2; keeping them
+        // one per line and aligned is the point.
+        // clang-format off
         if (dup)    b |= 0x08;
         b |= static_cast<uint8_t>((static_cast<uint8_t>(qos) & 0x03) << 1);
         if (retain) b |= 0x01;
+        // clang-format on
     }
     else if (type == PacketType::Pubrel ||
              type == PacketType::Subscribe ||

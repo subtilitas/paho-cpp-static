@@ -15,6 +15,9 @@ TEST(codec_connect_matches_golden_bytes)
     const Result<size_t> n = codec::encode_connect(etl::span<uint8_t>(buf, sizeof(buf)), opts);
     REQUIRE(n.ok());
 
+    // Bytes straight off the wire, laid out one field per line with the
+    // field named. That layout is the assertion's documentation.
+    // clang-format off
     const uint8_t want[] = {
         0x10, 0x0F,                          // CONNECT, remaining length 15
         0x00, 0x04, 'M', 'Q', 'T', 'T',      // protocol name
@@ -23,6 +26,7 @@ TEST(codec_connect_matches_golden_bytes)
         0x00, 0x3C,                          // keep alive 60
         0x00, 0x03, 'a', 'b', 'c',           // client id
     };
+    // clang-format on
     CHECK_BYTES(buf, n.value(), want, sizeof(want));
 }
 
@@ -236,12 +240,16 @@ TEST(codec_subscribe_encodes_filters_and_qos)
         etl::span<const TopicSubscription>(subs, 2));
     REQUIRE(n.ok());
 
+    // Bytes straight off the wire, laid out one field per line with the
+    // field named. That layout is the assertion's documentation.
+    // clang-format off
     const uint8_t want[] = {
         0x82, 0x0C,              // SUBSCRIBE (flags 0010), remaining length 12
         0x00, 0x07,              // packet id
         0x00, 0x03, 'a', '/', 'b', 0x01,
         0x00, 0x01, 'c', 0x02,
     };
+    // clang-format on
     CHECK_BYTES(buf, n.value(), want, sizeof(want));
 }
 
