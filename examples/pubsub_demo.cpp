@@ -32,6 +32,11 @@ example::PosixClock g_clock;
 char                g_topic[128] = "demo/mqtt-embedded";
 volatile bool       g_running    = true;
 
+/// Upper bound on the whole session. Generous next to the ~16s a healthy run
+/// takes, tight enough that a wedged broker fails the job in a minute rather
+/// than occupying a CI runner until its limit.
+constexpr uint32_t kSessionDeadlineMs = 60000;
+
 // CI runs this as an interop test, so the demo has to be able to fail. Every
 // stage records what it achieved and main() checks the tally at the end;
 // exiting 0 after silently never reaching the broker would make the job green
@@ -110,10 +115,30 @@ int main(int argc, char** argv)
 
     bool     subscribed = false;
     int      published  = 0;
+    int      deferrals  = 0;
     uint32_t last_pub   = g_clock.now_ms();
+
+    // A deadline on the whole session, because every other stopping condition
+    // here depends on making progress. If the broker accepts the connection
+    // and then acknowledges nothing, the client stays healthy -- keep-alive
+    // still round-trips, so none of its own timeouts fire -- while publish()
+    // returns NoInflightSlot forever and `published` never advances. Without
+    // this the loop spins until the CI runner's job limit, which is a six-hour
+    // way of reporting a failure that is obvious in ten seconds.
+    const uint32_t started_ms = g_clock.now_ms();
+    bool           timed_out  = false;
 
     while (g_running && published < 5)
     {
+        if (mqtt::elapsed_ms(g_clock.now_ms(), started_ms) > kSessionDeadlineMs)
+        {
+            std::printf("\ntimed out after %us: connected=%d subscribed=%d published=%d\n",
+                        kSessionDeadlineMs / 1000u, g_connected ? 1 : 0, subscribed ? 1 : 0,
+                        published);
+            timed_out = true;
+            break;
+        }
+
         const mqtt::Error rc = client.step();
         if (rc != mqtt::Error::Ok)
             break;
@@ -149,11 +174,23 @@ int main(int argc, char** argv)
             {
                 std::printf("  -> qos%d %s\n", static_cast<int>(qos), payload);
                 ++published;
-                last_pub = g_clock.now_ms();
+                deferrals = 0;
+                last_pub  = g_clock.now_ms();
             }
             else
             {
+                // The QoS is chosen from `published`, so a level that fails
+                // persistently is retried at that same level forever. Give up
+                // rather than let the deadline above be the only backstop, and
+                // say which error it was.
                 std::printf("  publish deferred: %s\n", mqtt::to_string(e));
+                if (++deferrals >= 10)
+                {
+                    std::printf("\ngave up after %d consecutive deferrals at qos%d\n",
+                                deferrals, static_cast<int>(qos));
+                    timed_out = true;
+                    break;
+                }
                 last_pub = g_clock.now_ms();
             }
         }
@@ -161,8 +198,10 @@ int main(int argc, char** argv)
         transport.wait_readable(50);
     }
 
-    // Drain the last acknowledgements before going away.
-    for (int i = 0; i < 40 && client.inflight_count() > 0; ++i)
+    // Drain the last acknowledgements before going away. Skipped once the
+    // deadline has fired: the session is already a failure and there is no
+    // sense spending another ten seconds proving it twice.
+    for (int i = 0; i < 40 && !timed_out && client.inflight_count() > 0; ++i)
     {
         client.step();
         transport.wait_readable(50);
@@ -174,11 +213,13 @@ int main(int argc, char** argv)
     // afterwards tests the behaviour rather than the broker's choice of words
     // in its log -- which varies by version and is not ours to depend on.
     const uint32_t idle_ms = (static_cast<uint32_t>(opts.keep_alive_s) * 1000u * 2u);
-    std::printf("idling %.1fs to exercise keep-alive...\n",
-                static_cast<double>(idle_ms) / 1000.0);
+    if (!timed_out)
+        std::printf("idling %.1fs to exercise keep-alive...\n",
+                    static_cast<double>(idle_ms) / 1000.0);
 
     const uint32_t idle_started = g_clock.now_ms();
-    while (g_running && mqtt::elapsed_ms(g_clock.now_ms(), idle_started) < idle_ms)
+    while (!timed_out && g_running &&
+           mqtt::elapsed_ms(g_clock.now_ms(), idle_started) < idle_ms)
     {
         if (client.step() != mqtt::Error::Ok)
             break;
@@ -196,6 +237,7 @@ int main(int argc, char** argv)
 
     std::printf("\nresults\n");
     int failures = 0;
+    failures += expect(!timed_out, "session completed without hitting the deadline");
     failures += expect(g_connected, "broker accepted CONNECT");
     failures += expect(subscribed, "SUBSCRIBE acknowledged");
     failures += expect(published == 5, "published 5 messages at QoS 0, 1 and 2");

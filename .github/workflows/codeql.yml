@@ -35,6 +35,7 @@ jobs:
   analyse:
     name: Analyse C++
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       actions: read

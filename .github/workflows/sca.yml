@@ -51,6 +51,7 @@ jobs:
   clang-tidy:
     name: clang-tidy
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
@@ -133,6 +134,7 @@ jobs:
   clang-format:
     name: clang-format
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 

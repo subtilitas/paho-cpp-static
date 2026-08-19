@@ -20,14 +20,15 @@ env:
 
   # The floor, not the target. Set a couple of points below where the suite
   # actually sits so ordinary churn does not trip it, and raise it deliberately
-  # rather than letting it drift. Current: 87.9% line, 77.2% branch.
-  COVERAGE_MIN_LINE: 85
-  COVERAGE_MIN_BRANCH: 74
+  # rather than letting it drift. Current: 89.8% line, 80.4% branch.
+  COVERAGE_MIN_LINE: 87
+  COVERAGE_MIN_BRANCH: 78
 
 jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -66,6 +67,7 @@ jobs:
   sanitizers:
     name: Sanitizers
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
 
@@ -98,6 +100,7 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
 
@@ -190,6 +193,7 @@ jobs:
   interop:
     name: Mosquitto interop
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
@@ -206,9 +210,28 @@ jobs:
 
       - name: Start broker
         run: |
+          set -euo pipefail
           printf 'listener 1883 127.0.0.1\nallow_anonymous true\n' > mosq.conf
-          mosquitto -c mosq.conf -v > mosq.log 2>&1 &
-          sleep 2
+
+          # setsid and a full redirect so the background broker cannot hold the
+          # step's stdout open, which is its own way of hanging a job.
+          setsid mosquitto -c mosq.conf -v > mosq.log 2>&1 < /dev/null &
+          echo $! > mosq.pid
+
+          # Wait for it to actually accept, rather than sleeping and hoping. A
+          # broker that failed to start is then reported here, in the step whose
+          # job it was, instead of as a mystery timeout thirty seconds later.
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/1883) 2>/dev/null; then
+              echo "broker accepting connections after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "broker never accepted a connection on 127.0.0.1:1883"
+          cat mosq.log
+          exit 1
 
       - name: Build
         run: |
@@ -238,6 +261,15 @@ jobs:
             exit 1
           fi
           echo "no protocol errors logged"
+
+      - name: Stop the broker
+        if: always()
+        run: |
+          if [ -f mosq.pid ]; then
+            kill "$(cat mosq.pid)" 2>/dev/null || true
+          fi
+          pkill -x mosquitto 2>/dev/null || true
+          echo "broker stopped"
 
       - name: Upload broker log
         if: always()
