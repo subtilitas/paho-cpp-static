@@ -8,6 +8,7 @@ add_executable(mqtt_tests
     test_codec.cpp
     test_topic.cpp
     test_client.cpp
+    test_to_string.cpp
     test_no_alloc.cpp)
 
 target_link_libraries(mqtt_tests PRIVATE paho_cpp_static)
