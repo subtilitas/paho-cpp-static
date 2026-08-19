@@ -415,6 +415,154 @@ TEST(codec_connack_rejects_session_present_with_a_refusal)
     CHECK(codec::decode_connack(etl::span<const uint8_t>(consistent, 2)).ok());
 }
 
+//------------------------------------------------------------------------------
+// Length limits
+//
+// Every length-prefixed field on the wire is bounded by a two-byte header, so
+// 65535 is a hard limit rather than a policy. These paths are the difference
+// between refusing a field and silently truncating its length to 16 bits.
+//------------------------------------------------------------------------------
+
+namespace {
+
+/// A string one byte past what a two-byte length prefix can describe.
+etl::string_view too_long() noexcept
+{
+    static char buf[65536 + 1];
+    static bool filled = false;
+    if (!filled)
+    {
+        for (char& c : buf)
+            c = 'x';
+        filled = true;
+    }
+    return etl::string_view(buf, sizeof(buf));
+}
+
+}   // namespace
+
+TEST(codec_connect_rejects_fields_that_cannot_be_length_prefixed)
+{
+    const etl::span<const uint8_t> big(reinterpret_cast<const uint8_t*>(too_long().data()),
+                                       too_long().size());
+
+    {
+        ConnectOptions o;
+        o.client_id = too_long();
+        CHECK(codec::connect_remaining_length(o).error() == Error::InvalidArgument);
+    }
+    {
+        ConnectOptions o;
+        o.client_id  = etl::string_view("c");
+        o.will.topic = too_long();
+        CHECK(codec::connect_remaining_length(o).error() == Error::InvalidArgument);
+    }
+    {
+        ConnectOptions o;
+        o.client_id    = etl::string_view("c");
+        o.will.topic   = etl::string_view("w");
+        o.will.payload = big;
+        CHECK(codec::connect_remaining_length(o).error() == Error::InvalidArgument);
+    }
+    {
+        ConnectOptions o;
+        o.client_id = etl::string_view("c");
+        o.username  = too_long();
+        CHECK(codec::connect_remaining_length(o).error() == Error::InvalidArgument);
+    }
+    {
+        ConnectOptions o;
+        o.client_id = etl::string_view("c");
+        o.username  = etl::string_view("u");
+        o.password  = big;
+        CHECK(codec::connect_remaining_length(o).error() == Error::InvalidArgument);
+    }
+}
+
+TEST(codec_publish_rejects_an_unusable_topic)
+{
+    CHECK(codec::publish_remaining_length(etl::string_view(), 0, QoS::AtMostOnce).error() ==
+          Error::InvalidArgument);
+    CHECK(codec::publish_remaining_length(too_long(), 0, QoS::AtMostOnce).error() ==
+          Error::InvalidArgument);
+}
+
+TEST(codec_subscribe_rejects_an_unusable_filter)
+{
+    {
+        const TopicSubscription s{etl::string_view(), QoS::AtMostOnce};
+        CHECK(codec::subscribe_remaining_length(etl::span<const TopicSubscription>(&s, 1))
+                  .error() == Error::InvalidArgument);
+    }
+    {
+        const TopicSubscription s{too_long(), QoS::AtMostOnce};
+        CHECK(codec::subscribe_remaining_length(etl::span<const TopicSubscription>(&s, 1))
+                  .error() == Error::InvalidArgument);
+    }
+}
+
+TEST(codec_unsubscribe_rejects_an_empty_list_or_filter)
+{
+    CHECK(codec::unsubscribe_remaining_length(etl::span<const etl::string_view>()).error() ==
+          Error::InvalidArgument);
+
+    const etl::string_view empty;
+    CHECK(codec::unsubscribe_remaining_length(etl::span<const etl::string_view>(&empty, 1))
+              .error() == Error::InvalidArgument);
+
+    const etl::string_view big = too_long();
+    CHECK(codec::unsubscribe_remaining_length(etl::span<const etl::string_view>(&big, 1))
+              .error() == Error::InvalidArgument);
+}
+
+TEST(codec_requires_a_packet_id_where_the_wire_format_has_one)
+{
+    uint8_t buf[64] = {};
+
+    const TopicSubscription sub{etl::string_view("a"), QoS::AtMostOnce};
+    CHECK(codec::encode_subscribe(etl::span<uint8_t>(buf, sizeof(buf)), 0,
+                                  etl::span<const TopicSubscription>(&sub, 1))
+              .error() == Error::InvalidArgument);
+
+    const etl::string_view filter("a");
+    CHECK(codec::encode_unsubscribe(etl::span<uint8_t>(buf, sizeof(buf)), 0,
+                                    etl::span<const etl::string_view>(&filter, 1))
+              .error() == Error::InvalidArgument);
+}
+
+TEST(codec_encode_ack_rejects_a_type_that_is_not_an_ack)
+{
+    uint8_t buf[8] = {};
+    for (const PacketType t :
+         {PacketType::Connect, PacketType::Publish, PacketType::Subscribe, PacketType::Pingreq})
+    {
+        CHECK(codec::encode_ack(etl::span<uint8_t>(buf, sizeof(buf)), t, 1).error() ==
+              Error::InvalidArgument);
+    }
+}
+
+TEST(codec_peek_reports_incomplete_on_an_empty_buffer)
+{
+    CHECK(codec::peek_header(etl::span<const uint8_t>()).error() == Error::Incomplete);
+}
+
+TEST(codec_decode_rejects_undersized_bodies)
+{
+    // A bare packet id is exactly two bytes; anything else is malformed.
+    const uint8_t one[] = {0x00};
+    CHECK(codec::decode_packet_id(etl::span<const uint8_t>(one, 1)).error() ==
+          Error::MalformedPacket);
+
+    const uint8_t three[] = {0x00, 0x01, 0x02};
+    CHECK(codec::decode_packet_id(etl::span<const uint8_t>(three, 3)).error() ==
+          Error::MalformedPacket);
+
+    // SUBACK needs a packet id and at least one return code.
+    const uint8_t two[] = {0x00, 0x01};
+    CHECK(codec::decode_suback(etl::span<const uint8_t>(two, 2)).error() ==
+          Error::MalformedPacket);
+}
+
 TEST(codec_string_helpers_roundtrip)
 {
     uint8_t                 buf[16] = {};

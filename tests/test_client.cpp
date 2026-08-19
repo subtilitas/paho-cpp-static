@@ -247,6 +247,74 @@ TEST(client_completes_qos2_handshake)
     CHECK_EQ(delivered, id);
 }
 
+// A broker that loses our PUBREL sends PUBREC again. The slot has already
+// advanced to WaitPubcomp by then, so the client must re-send the PUBREL it
+// stored rather than treating the repeat as unexpected.
+TEST(client_resends_pubrel_on_a_repeated_pubrec)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    uint16_t id = 0;
+    CHECK(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"), QoS::ExactlyOnce,
+                           false, &id) == Error::Ok);
+    f.client.step();
+
+    sim::push_ack(f.transport, PacketType::Pubrec, id);
+    f.client.step();
+    CHECK_EQ(sim::count_sent(f.transport, PacketType::Pubrel), size_t{1});
+
+    // The same PUBREC again: another PUBREL, same id, slot still inflight.
+    sim::push_ack(f.transport, PacketType::Pubrec, id);
+    f.client.step();
+    CHECK_EQ(sim::count_sent(f.transport, PacketType::Pubrel), size_t{2});
+    CHECK_EQ(sim::sent_ack_id(sim::find_sent(f.transport, PacketType::Pubrel, 1)), id);
+    CHECK_EQ(f.client.inflight_count(), size_t{1});
+
+    // And the handshake still completes on PUBCOMP.
+    sim::push_ack(f.transport, PacketType::Pubcomp, id);
+    f.client.step();
+    CHECK_EQ(f.client.inflight_count(), size_t{0});
+}
+
+// Subscribing to a filter already in the table updates it in place rather than
+// adding a second entry, so the QoS and the handler can be changed.
+TEST(client_resubscribing_an_existing_filter_updates_it_in_place)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    int  first  = 0;
+    int  second = 0;
+    auto h1     = [&](const Message&) { ++first; };
+    auto h2     = [&](const Message&) { ++second; };
+
+    uint16_t id1 = 0;
+    CHECK(f.client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce,
+                             TestClient::MessageHandler(h1), &id1) == Error::Ok);
+    f.client.step();
+    const uint8_t granted0[] = {0x00};
+    sim::push_suback(f.transport, id1, granted0, 1);
+    f.client.step();
+    CHECK_EQ(f.client.subscription_count(), size_t{1});
+
+    // Same filter, different QoS and a different handler.
+    uint16_t id2 = 0;
+    CHECK(f.client.subscribe(etl::string_view("a/b"), QoS::AtLeastOnce,
+                             TestClient::MessageHandler(h2), &id2) == Error::Ok);
+    f.client.step();
+    CHECK_EQ(f.client.subscription_count(), size_t{1});   // updated, not duplicated
+
+    const uint8_t granted1[] = {0x01};
+    sim::push_suback(f.transport, id2, granted1, 1);
+    f.client.step();
+
+    sim::push_publish(f.transport, "a/b", "x");
+    f.client.step();
+    CHECK_EQ(second, 1);
+    CHECK_EQ(first, 0);   // the old handler was replaced, not kept alongside
+}
+
 TEST(client_reports_full_inflight_window)
 {
     Fixture f;
