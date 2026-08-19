@@ -33,6 +33,7 @@ namespace mqtt {
 class Transport
 {
 public:
+    Transport()          = default;
     virtual ~Transport() = default;
 
     /// Begin, or continue, establishing the connection.
@@ -68,6 +69,16 @@ public:
 
     /// Whether the byte stream is currently usable.
     virtual bool is_connected() const noexcept = 0;
+
+protected:
+    // Protected rather than deleted: a derived transport may legitimately want
+    // to be copyable, but assigning through a Transport& would slice it. This
+    // is the shape the Core Guidelines recommend for an abstract interface
+    // (C.67), and it keeps the class from silently acquiring the wrong ones.
+    Transport(const Transport&)            = default;
+    Transport& operator=(const Transport&) = default;
+    Transport(Transport&&)                 = default;
+    Transport& operator=(Transport&&)      = default;
 };
 
 /// A monotonic millisecond time source.
@@ -78,10 +89,17 @@ public:
 class Clock
 {
 public:
+    Clock()          = default;
     virtual ~Clock() = default;
 
     /// Milliseconds since an arbitrary fixed origin. Must be monotonic.
     virtual uint32_t now_ms() const noexcept = 0;
+
+protected:
+    Clock(const Clock&)            = default;
+    Clock& operator=(const Clock&) = default;
+    Clock(Clock&&)                 = default;
+    Clock& operator=(Clock&&)      = default;
 };
 
 /// Wrap-safe elapsed time. Correct across a uint32_t rollover.
