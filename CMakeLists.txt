@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(paho-cpp-static VERSION 1.3.0 LANGUAGES CXX
+project(paho-cpp-static VERSION 1.5.0 LANGUAGES CXX
         DESCRIPTION "Statically allocated MQTT 3.1.1 client in C++17")
 
 #-------------------------------------------------------------------------------
