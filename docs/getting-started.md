@@ -40,6 +40,36 @@ The message goes out at QoS 1 and comes straight back through the client's own
 subscription, so a single run exercises publish, subscribe, delivery and
 acknowledgement.
 
+### No broker to hand?
+
+`tools/stub_broker.py` is a small MQTT 3.1.1 broker in the standard library,
+for when installing one is not an option — a locked-down build agent, a slim
+container, an aeroplane. It needs no arguments and no dependencies:
+
+```bash
+python3 tools/stub_broker.py --port 1883 &
+
+./build/examples/pubsub_demo 127.0.0.1 1883 demo/hello
+```
+
+It holds a real session: both directions at QoS 0, 1 and 2 with the full
+acknowledgement handshakes, subscribe and unsubscribe, keep-alive, and routing
+of published messages back to matching subscriptions.
+
+Its more interesting use is provoking the failures a healthy broker will not
+give you, which are the paths a client is most likely to get wrong:
+
+```bash
+python3 tools/stub_broker.py --refuse 5        # CONNACK "not authorized"
+python3 tools/stub_broker.py --drop-after 8    # socket dies mid-session
+python3 tools/stub_broker.py --session-present # exercise session resumption
+```
+
+It is a development aid, not a broker and not a conformance checker: it is
+permissive, so it will not catch your client sending something the spec
+forbids. Check against real Mosquitto before you believe a port works — which
+is what this project's own CI does on every push.
+
 ## The three examples
 
 | Example | Transport | Use it to |
