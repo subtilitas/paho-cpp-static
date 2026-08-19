@@ -1,0 +1,111 @@
+# clang-tidy configuration.
+#
+# Tuned for signal. A static analyser that reports six hundred things is a
+# analyser nobody reads, so the families below are enabled for the bugs they
+# find and the ones that only restate this project's deliberate choices are
+# switched off, each with the reason written down. Anything disabled here
+# should be disabled because it is wrong for *this* codebase, not because it
+# was inconvenient on the day.
+#
+# Run it the way CI does:
+#   cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+#   clang-tidy -p build $(git ls-files 'src/*.cpp')
+
+Checks: >
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  misc-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  cppcoreguidelines-*,
+
+  -bugprone-easily-swappable-parameters,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -readability-braces-around-statements,
+  -readability-identifier-length,
+  -readability-uppercase-literal-suffix,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-macro-usage,
+  -performance-unnecessary-value-param,
+
+# Why each of those is off:
+#
+#   bugprone-easily-swappable-parameters
+#       Fires on every (ptr, len) and (topic, payload) pair. That shape is the
+#       C++ interface to a wire protocol; renaming will not fix it.
+#
+#   misc-include-cleaner
+#       Wants every transitively-used symbol included directly, including ETL
+#       internals we reach through documented public headers.
+#
+#   *-non-private-member-variables-in-classes
+#       Message, ConnectOptions, Will and FixedHeader are deliberately
+#       aggregates. Public data is the interface, not an oversight.
+#
+#   readability-braces-around-statements
+#       The codebase uses single-statement bodies without braces throughout.
+#       That is a style choice, consistently applied, and clang-format is the
+#       place to argue about style.
+#
+#   readability-identifier-length
+#       The codec walks buffers with f, t, i, n. In a fifteen-line function
+#       with an explicit comment above it, longer names are not clearer.
+#
+#   readability-uppercase-literal-suffix
+#       0u versus 0U. Consistent already; not worth 51 diagnostics.
+#
+#   *-magic-numbers
+#       This library implements a wire format. 0x80, 0x0F and 65535 are the
+#       specification, and the ones worth naming already have names.
+#
+#   cppcoreguidelines-avoid-do-while
+#       vbi_encode is a do/while because a variable byte integer always emits
+#       at least one byte. That is the algorithm, straight from the spec.
+#
+#   cppcoreguidelines-avoid-c-arrays
+#       uint8_t buffer_[Capacity] is the entire point of the library: a member
+#       array with no indirection and no allocator. etl::array is used where a
+#       container is wanted; the raw arrays are deliberate.
+#
+#   cppcoreguidelines-pro-bounds-*
+#       This is a buffer library. Pointer arithmetic inside bounds-checked
+#       accessors is the work, not a smell. The bounds checks are tested.
+#
+#   cppcoreguidelines-pro-type-reinterpret-cast
+#       Required to view a char payload as bytes and back. Confined to the
+#       codec boundary and the string_view overloads.
+#
+#   cppcoreguidelines-macro-usage
+#       One macro, MQTT_WRITE, which turns a bool-returning stream write into
+#       an early return. A function cannot return from its caller.
+#
+#   performance-unnecessary-value-param
+#       Fires on etl::string_view and etl::span taken by value. Both are two
+#       words and are meant to be passed that way; a const reference would be
+#       slower and would add an indirection.
+
+WarningsAsErrors: ''
+HeaderFilterRegex: 'include/mqtt/.*\.hpp$'
+FormatStyle: file
+
+CheckOptions:
+  # The state machine's step() and the topic matcher are inherently branchy.
+  # This is set to flag genuine sprawl rather than to win an argument about a
+  # switch statement.
+  - key: readability-function-cognitive-complexity.Threshold
+    value: '40'
+  - key: readability-function-cognitive-complexity.IgnoreMacros
+    value: 'true'
