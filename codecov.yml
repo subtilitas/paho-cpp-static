@@ -1,0 +1,43 @@
+# Codecov reports and annotates; it does not gate. The blocking check is
+# gcovr's --fail-under-line / --fail-under-branch in .github/workflows/ci.yml,
+# which runs on the runner and needs no third-party service to be reachable.
+# These statuses are informational so that a Codecov outage cannot redden an
+# otherwise good build.
+
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 1
+  round: down
+  # Reported range for the badge colour: red at 70, green at 90.
+  range: "70...90"
+
+  status:
+    project:
+      default:
+        target: auto
+        # Matches the intent of the CI floor: small dips are noise, a real
+        # regression is not.
+        threshold: 2%
+        informational: true
+    patch:
+      default:
+        # New code should carry its own tests, but a patch that only moves
+        # lines around should not be punished for it.
+        target: 80%
+        threshold: 5%
+        informational: true
+
+# Only the library is measured. The tests, the examples and the fetched ETL
+# checkout are not the subject, and counting them would flatter the number.
+ignore:
+  - "tests/**"
+  - "examples/**"
+  - "tools/**"
+  - "build/**"
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: true

@@ -4,6 +4,7 @@ A minimal MQTT 3.1.1 client in C++17 for targets that cannot afford a heap at
 run time.
 
 [![CI](https://github.com/subtilitas/paho-cpp-static/actions/workflows/ci.yml/badge.svg)](https://github.com/subtilitas/paho-cpp-static/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/subtilitas/paho-cpp-static/branch/main/graph/badge.svg)](https://codecov.io/gh/subtilitas/paho-cpp-static)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 - **No allocation after construction.** Every buffer and table is a member array
@@ -201,6 +202,7 @@ page, which is rebuilt from the suite itself on every push.
 | `tests/test_codec.cpp` | encode/decode round trips, golden bytes, malformed input |
 | `tests/test_topic.cpp` | wildcard matching against the spec's own examples |
 | `tests/test_client.cpp` | handshakes, QoS flows, keep-alive, fragmentation, teardown |
+| `tests/test_to_string.cpp` | every enumerator has a distinct name and no fallthrough |
 | `tests/test_no_alloc.cpp` | global `operator new` replaced with a counter |
 
 `test_no_alloc.cpp` is the one that matters. It replaces global `operator new`
@@ -210,6 +212,35 @@ retransmission, table exhaustion, a malformed-packet teardown, disconnect — th
 asserts the counter is still zero. A separate case proves construction does not
 allocate either, so a `Client` can live in `.bss` on a target with no heap
 linked at all.
+
+### Coverage
+
+Measured by `gcovr` on every push and published to
+[Codecov](https://codecov.io/gh/subtilitas/paho-cpp-static) — the badge above is
+the live figure, which is why no number is written out here. Scope is
+`include/mqtt/` and `src/` only; tests, examples and the fetched ETL checkout are
+excluded, since counting them would flatter the number rather than measure it.
+
+Instrumentation is applied `PUBLIC`, which matters more than it sounds: most of
+this library is templates in headers, so the code under test is compiled into
+the *test* objects rather than into `libpaho_cpp_static.a`. Measuring only the
+library target would report a healthy figure for four small `.cpp` files and say
+nothing whatever about `client.hpp`, where the state machine lives.
+
+CI fails below a floor set in `.github/workflows/ci.yml` (`COVERAGE_MIN_LINE`,
+`COVERAGE_MIN_BRANCH`), deliberately a couple of points under where the suite
+sits so ordinary churn does not trip it and raising it is a decision rather than
+a drift. The gate is `gcovr`'s own `--fail-under-*` on the runner, not a Codecov
+status, so the build does not depend on a third-party service being reachable.
+
+Reproduce it locally:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DMQTT_COVERAGE=ON -DMQTT_BUILD_EXAMPLES=OFF
+cmake --build build --parallel
+ctest --test-dir build
+gcovr --root . --filter include/mqtt/ --filter src/ --print-summary
+```
 
 Also verified:
 

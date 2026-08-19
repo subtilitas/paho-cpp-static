@@ -10,6 +10,7 @@ option(MQTT_BUILD_EXAMPLES "Build the host examples"        ON)
 option(MQTT_NO_EXCEPTIONS  "Compile with -fno-exceptions"   ON)
 option(MQTT_NO_RTTI        "Compile with -fno-rtti"         ON)
 option(MQTT_WERROR         "Treat warnings as errors"       OFF)
+option(MQTT_COVERAGE       "Instrument for gcov/llvm-cov"   OFF)
 
 set(MQTT_ETL_DIR "" CACHE PATH
     "Path to an Embedded Template Library checkout. If empty, ETL is fetched.")
@@ -166,6 +167,26 @@ else()
     if(MQTT_WERROR)
         target_compile_options(paho_cpp_static PRIVATE /WX)
     endif()
+endif()
+
+#-------------------------------------------------------------------------------
+# Coverage instrumentation
+#
+# PUBLIC rather than PRIVATE on purpose. Most of this library is templates that
+# live in headers, so the code being measured is compiled into the *test*
+# objects, not into libpaho_cpp_static.a. Instrumenting only the library target
+# would report high coverage of the four small .cpp files and say nothing at all
+# about client.hpp, which is where the state machine actually is.
+#
+# --coverage has to reach the link line too, hence link_options.
+#-------------------------------------------------------------------------------
+if(MQTT_COVERAGE)
+    if(MSVC)
+        message(FATAL_ERROR "MQTT_COVERAGE needs a GCC- or Clang-compatible "
+                            "toolchain; MSVC has no --coverage equivalent here.")
+    endif()
+    target_compile_options(paho_cpp_static PUBLIC --coverage -O0 -g)
+    target_link_options(paho_cpp_static PUBLIC --coverage)
 endif()
 
 #-------------------------------------------------------------------------------

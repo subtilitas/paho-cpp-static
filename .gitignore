@@ -15,7 +15,13 @@ _deps/
 *.exe
 *.gcda
 *.gcno
+*.gcov
 *.map
+
+# Coverage reports
+coverage.xml
+coverage.txt
+coverage-html/
 
 # Editors and tooling
 .vscode/
