@@ -16,6 +16,14 @@ env:
   # step with the GIT_TAG in CMakeLists.txt.
   ETL_TAG: 20.39.4
 
+  GCOVR_VERSION: "7.2"
+
+  # The floor, not the target. Set a couple of points below where the suite
+  # actually sits so ordinary churn does not trip it, and raise it deliberately
+  # rather than letting it drift. Current: 87.9% line, 77.2% branch.
+  COVERAGE_MIN_LINE: 85
+  COVERAGE_MIN_BRANCH: 74
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -86,6 +94,98 @@ jobs:
         env:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: ctest --test-dir build --output-on-failure -E no_alloc
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-coverage-${{ env.ETL_TAG }}
+
+      # Pinned: gcovr and gcov have to agree on the intermediate format, and a
+      # mismatch reports 0% rather than failing, which is the worst outcome for
+      # a number the README quotes.
+      - name: Install gcovr
+        run: pipx install "gcovr==${{ env.GCOVR_VERSION }}"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMQTT_COVERAGE=ON \
+            -DMQTT_WERROR=ON \
+            -DMQTT_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # The whole suite, no_alloc included: gcov's counters are increments in
+      # already-existing frames, so they do not allocate and the zero-allocation
+      # assertions still hold under instrumentation.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # Only the library is measured. Instrumentation is PUBLIC so the header
+      # templates get counted where they are actually compiled -- inside the
+      # test objects -- but the tests themselves are not the subject.
+      - name: Report
+        run: |
+          set -euo pipefail
+
+          # gcovr will not create the directory for --html-details itself, and
+          # the argument parse error it gives instead is not obviously about a
+          # missing directory.
+          mkdir -p coverage-html
+
+          gcovr --root . \
+            --filter 'include/mqtt/' \
+            --filter 'src/' \
+            --xml-pretty --output coverage.xml \
+            --html-details coverage-html/index.html \
+            --txt coverage.txt \
+            --print-summary \
+            --fail-under-line ${{ env.COVERAGE_MIN_LINE }} \
+            --fail-under-branch ${{ env.COVERAGE_MIN_BRANCH }}
+
+      # Runs even when the floor check above failed, so the PR shows what the
+      # numbers actually were rather than just that a threshold was missed.
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### Coverage'
+            echo
+            echo "Floor: ${{ env.COVERAGE_MIN_LINE }}% line, ${{ env.COVERAGE_MIN_BRANCH }}% branch"
+            echo
+            echo '```'
+            cat coverage.txt 2>/dev/null || echo "no report produced"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The hard gate is gcovr's floor above, which needs nothing external.
+      # Codecov is for the badge, the trend and the PR annotations, so an
+      # outage there must not turn a green build red.
+      - name: Upload to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          flags: unittests
+          name: paho-cpp-static
+          fail_ci_if_error: false
+
+      - name: Upload the HTML report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: coverage-html
 
   interop:
     name: Mosquitto interop
