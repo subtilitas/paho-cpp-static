@@ -1,22 +1,20 @@
-# Static analysis: CodeQL, clang-tidy and clang-format.
+# Static analysis: clang-tidy and clang-format. CodeQL is in codeql.yml.
 #
 # Report first, gate after triage.
 # ------------------------------------
-# Every job here starts advisory. They run on every push and pull request,
-# publish what they found, and go green regardless. Nothing is gated until
-# somebody has read the findings and decided which of them are real, because a
-# check that fails on day one for two hundred pre-existing reasons teaches
-# people to ignore it, and then it is worse than not having it.
+# Both jobs started advisory: reporting on every push, going green regardless,
+# until somebody had read the findings and decided which were real. A check
+# that fails on day one for hundreds of pre-existing reasons teaches people to
+# ignore it, and then it is worse than not having it.
 #
-# To gate one, flip its switch in `env` below. They are independent on purpose:
-# clang-tidy is close to clean and can go first, while clang-format currently
-# disagrees with the tree on every file and needs a decision before it can ever
-# be blocking. See docs/static-analysis.md for the state of that triage.
+# Both backlogs are now triaged to zero and both gate, so a finding means the
+# change in front of you introduced it. The switches in `env` remain, because
+# the next analyser added here should go through the same sequence. See
+# docs/static-analysis.md for what was fixed and what was declined.
 #
-# CodeQL has no switch here. It publishes to the Security tab and gating it is
-# a branch-protection setting -- Settings -> Branches -> Require code scanning
-# results -- which is the right place for it, since the severity threshold is a
-# repository policy rather than a workflow detail.
+# CodeQL lives in its own workflow, codeql.yml. It is advisory rather than
+# gating, and separating it keeps this file's failures actionable in one way
+# -- run the formatter, fix the finding -- and its badge honest.
 
 name: SCA
 
@@ -24,10 +22,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  schedule:
-    # CodeQL's queries are updated independently of this repository, so a
-    # weekly run catches findings that appear without anything here changing.
-    - cron: "17 4 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -54,45 +48,6 @@ env:
   GATE_CLANG_FORMAT: "true"
 
 jobs:
-  codeql:
-    name: CodeQL
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Cache the ETL checkout
-        uses: actions/cache@v6
-        with:
-          path: build/_deps
-          key: etl-codeql-${{ env.ETL_TAG }}
-
-      - name: Initialise CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: c-cpp
-          # Autobuild would work, but this project needs a specific CMake
-          # invocation -- exceptions and RTTI off, ETL fetched -- and analysing
-          # a build that is not the build we ship would be analysing fiction.
-          build-mode: manual
-          queries: security-and-quality
-
-      - name: Build
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DMQTT_BUILD_EXAMPLES=OFF
-          cmake --build build --parallel
-
-      - name: Analyse
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:c-cpp"
-
   clang-tidy:
     name: clang-tidy
     runs-on: ubuntu-latest

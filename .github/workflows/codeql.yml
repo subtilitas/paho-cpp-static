@@ -1,0 +1,72 @@
+# CodeQL security and quality scanning.
+#
+# Separate from sca.yml on purpose. The linters there gate: a finding fails the
+# job and blocks the change. CodeQL does not -- it publishes to the Security
+# tab, and whether an alert blocks a merge is a branch-protection setting
+# (Settings -> Branches -> Require code scanning results), because the severity
+# threshold is a repository policy rather than a workflow detail.
+#
+# Keeping it in its own file also means its badge reports on CodeQL alone,
+# rather than going red because someone forgot to run clang-format.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # CodeQL's queries are updated independently of this repository, so a
+    # weekly run catches findings that appear without anything here changing.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ETL_TAG: 20.39.4
+
+jobs:
+  analyse:
+    name: Analyse C++
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-codeql-${{ env.ETL_TAG }}
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          # Autobuild would work, but this project needs a specific CMake
+          # invocation -- exceptions and RTTI off, ETL fetched -- and analysing
+          # a build that is not the build we ship would be analysing fiction.
+          build-mode: manual
+          queries: security-and-quality
+
+      - name: Build
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DMQTT_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"

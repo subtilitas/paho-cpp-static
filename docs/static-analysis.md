@@ -1,8 +1,12 @@
 # Static analysis
 
-Three analysers run in `.github/workflows/sca.yml`: CodeQL, clang-tidy and
-clang-format. clang-tidy and clang-format **gate**; CodeQL is **advisory** — it
-reports to the Security tab and does not fail the build.
+Three analysers run in CI. clang-tidy and clang-format are in
+`.github/workflows/sca.yml` and both **gate**. CodeQL is in
+`.github/workflows/codeql.yml` and is **advisory** — it reports to the Security
+tab and does not fail the build.
+
+They are in separate files so that each badge means one thing: a red CodeQL
+badge is a security finding, not somebody forgetting to run the formatter.
 
 That is deliberate. A check that fails on day one for hundreds of pre-existing
 reasons does not get fixed; it gets ignored, and an ignored red check is worse
@@ -28,9 +32,10 @@ GATE_CLANG_TIDY: "true"
 GATE_CLANG_FORMAT: "true"
 ```
 
-CodeQL has no switch. It publishes to the Security tab, and gating it belongs
-in branch protection — *Settings → Branches → Require code scanning results* —
-because the severity threshold is a repository policy, not a workflow detail.
+CodeQL has no switch, and is not in that file. It publishes to the Security
+tab, and gating it belongs in branch protection — *Settings → Branches →
+Require code scanning results* — because the severity threshold is a repository
+policy, not a workflow detail.
 
 ---
 
