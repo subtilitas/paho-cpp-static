@@ -10,11 +10,36 @@ AlignEscapedNewlines: Left
 AlignTrailingComments: true
 AllowShortBlocksOnASingleLine: Empty
 AllowShortCaseLabelsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: Inline
+# All, not Inline: the codebase writes one-line definitions at namespace scope
+# too -- at_least_one, utf8_size, valid_qos, the operator new overloads in the
+# allocation test. Inline would expand every one of them.
+AllowShortFunctionsOnASingleLine: All
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakTemplateDeclarations: Yes
-BreakBeforeBraces: Allman
+# Allman in every respect except namespaces, which the codebase opens as
+# `namespace mqtt {` on one line. Spelled out as Custom because Allman is a
+# preset with no way to override a single member of it; every value below is
+# Allman's own except AfterNamespace.
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel:        true
+  AfterClass:            true
+  AfterControlStatement: Always
+  AfterEnum:             true
+  AfterFunction:         true
+  AfterNamespace:        false
+  AfterStruct:           true
+  AfterUnion:            true
+  AfterExternBlock:      true
+  BeforeCatch:           true
+  BeforeElse:            true
+  BeforeLambdaBody:      false
+  BeforeWhile:           false
+  IndentBraces:          false
+  SplitEmptyFunction:    true
+  SplitEmptyRecord:      true
+  SplitEmptyNamespace:   true
 BreakConstructorInitializers: BeforeColon
 ColumnLimit:     96
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
