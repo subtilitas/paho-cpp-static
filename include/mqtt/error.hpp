@@ -42,7 +42,11 @@ namespace mqtt {
 
 /// Every fallible operation in this library reports failure through this enum.
 /// There are no exceptions and no error globals.
-enum class Error : int16_t
+///
+/// Fixed at one byte. There are twenty-odd codes and room for two hundred more,
+/// and the narrower type packs better next to the other small members: it takes
+/// eight bytes off sizeof(Client<DefaultConfig>) on a 64-bit build for nothing.
+enum class Error : uint8_t
 {
     Ok = 0,
 

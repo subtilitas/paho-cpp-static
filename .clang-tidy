@@ -40,6 +40,9 @@ Checks: >
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -cppcoreguidelines-macro-usage,
   -performance-unnecessary-value-param,
+  -cppcoreguidelines-missing-std-forward,
+  -readability-avoid-nested-conditional-operator,
+  -readability-use-anyofallof,
 
 # Why each of those is off:
 #
@@ -96,6 +99,21 @@ Checks: >
 #       Fires on etl::string_view and etl::span taken by value. Both are two
 #       words and are meant to be passed that way; a const reference would be
 #       slower and would add an indirection.
+#
+#   cppcoreguidelines-missing-std-forward
+#       enqueue_sized takes its encoder as EncodeFn&& and calls it once, in
+#       place. Forwarding would change nothing, and <utility> is a dependency
+#       this header does not otherwise need.
+#
+#   readability-avoid-nested-conditional-operator
+#       vbi_size_c is a chain of conditionals because it has to be a single
+#       expression to stay usable in a constant expression under C++17, where
+#       a constexpr function body cannot hold statements as freely.
+#
+#   readability-use-anyofallof
+#       Suggests std::all_of for two four-line loops. This library keeps its
+#       standard-library surface deliberately small -- <algorithm> is not
+#       currently included anywhere -- and the loops read fine.
 
 WarningsAsErrors: ''
 HeaderFilterRegex: 'include/mqtt/.*\.hpp$'

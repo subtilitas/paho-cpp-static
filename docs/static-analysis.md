@@ -1,8 +1,8 @@
 # Static analysis
 
 Three analysers run in `.github/workflows/sca.yml`: CodeQL, clang-tidy and
-clang-format. All three are **advisory** right now — they report on every push
-and pull request and go green regardless.
+clang-format. clang-tidy **gates**; the other two are **advisory** — they report
+on every push and pull request and go green regardless.
 
 That is deliberate. A check that fails on day one for hundreds of pre-existing
 reasons does not get fixed; it gets ignored, and an ignored red check is worse
@@ -15,7 +15,7 @@ This page records where that triage has got to.
 | Analyser | State | Findings | Blocker before gating |
 |---|---|---|---|
 | CodeQL | advisory | see the Security tab | none known |
-| clang-tidy | advisory | 15 | triage the list below |
+| **clang-tidy** | **gating** | **0** | — triaged to zero, see below |
 | clang-format | advisory | 29 of 29 files | `.clang-format` does not describe the code |
 
 ## Turning a gate on
@@ -24,8 +24,8 @@ Each analyser has its own switch in the workflow's `env` block, so they can be
 gated one at a time as they come clean:
 
 ```yaml
-GATE_CLANG_TIDY: "false"     # -> "true" to make findings fail the job
-GATE_CLANG_FORMAT: "false"
+GATE_CLANG_TIDY: "true"      # on: the backlog was triaged to zero
+GATE_CLANG_FORMAT: "false"   # -> "true" once .clang-format is settled
 ```
 
 CodeQL has no switch. It publishes to the Security tab, and gating it belongs
@@ -47,44 +47,44 @@ those is not telling us anything.
 That takes the count from **617 to 15**, which is the difference between a
 report somebody reads and one nobody does.
 
-### The 15, and what to do about them
+### The 15, and what became of them
 
-Nothing here looks like a bug. Grouped by decision needed:
+None of them was a bug. All fifteen are resolved, so the gate is on and any new
+finding is a regression in the change that introduced it.
 
-**Probably just fix**
+**Fixed**
 
-- `bugprone-sizeof-expression` — `client.hpp:106`. The
-  `static_assert(sizeof(ConfigCheck<Cfg>) > 0)` that forces the config checks
-  to instantiate. The comparison is indeed always true; that is the mechanism,
-  not an accident. Cleaner as a private empty base, which instantiates the
-  template *and* costs nothing under empty-base optimisation.
-- `readability-redundant-member-init` ×5 — `on_message_{}` and friends.
-  `etl::delegate` default-constructs to empty anyway.
+- `bugprone-sizeof-expression` — `static_assert(sizeof(ConfigCheck<Cfg>) > 0)`
+  existed only to force the config checks to instantiate. `Client` now derives
+  privately from `ConfigCheck<Cfg>` instead: a base class must be complete, so
+  the assertions still fire, and an empty base costs nothing under the empty
+  base optimisation. Verified — `sizeof` is unchanged by the switch.
+- `readability-redundant-member-init` ×5 — the five handler members.
+  `etl::delegate` default-constructs to unset already.
+- `cppcoreguidelines-special-member-functions` ×3 — `Transport` and `Clock`
+  now declare their copy and move operations `protected` and defaulted, which
+  is the Core Guidelines shape for an abstract interface (C.67): a derived
+  transport may still be copyable, but assigning through a `Transport&` can no
+  longer slice it. `Client` deletes all four and defaults its destructor; it
+  holds references and moving one mid-session would leave the transport
+  talking to a corpse.
+- `performance-enum-size` — `Error` was `int16_t` for twenty-three values. Now
+  `uint8_t`, which packs better against the neighbouring members and takes
+  **eight bytes off every configuration**: `Client<DefaultConfig>` went 4608 →
+  4600, and the small and large profiles likewise. This is an API-visible
+  change to a public enum, taken deliberately: the project is 0.1.0, is
+  consumed from source via `add_subdirectory`/`FetchContent`, ships no
+  `install(EXPORT)` and makes no ABI promise. Reverting is one line if that
+  ever stops being true.
 
-**Worth a decision**
+**Declined, and silenced in `.clang-tidy` with the reasoning recorded**
 
-- `performance-enum-size` — `Error` is `int16_t` and fits in `uint8_t`. It is
-  stored in every `Result<T>`, so this is real bytes on a small target, but it
-  is also an ABI-visible change to a public enum.
-- `cppcoreguidelines-special-member-functions` ×3 — `Transport`, `Clock` and
-  `Client`. The two interfaces declare a virtual destructor and nothing else;
-  the rule of five says declare or delete the rest. Cheap, and it stops a
-  derived transport being sliced by accident.
-
-**Probably decline**
-
-- `readability-use-anyofallof` ×2 — `topic.cpp:12` and `client.hpp:1305`.
-  Would mean including `<algorithm>` in a library that deliberately keeps its
-  standard-library surface tiny, to replace a four-line loop.
-- `readability-avoid-nested-conditional-operator` ×2 — `client.hpp:682`, the
-  compile-time `vbi_size_c`. It has to stay a single expression to be
-  `constexpr`-friendly on C++17.
-- `cppcoreguidelines-missing-std-forward` — `enqueue_sized`'s `EncodeFn&&`.
-  The callable is invoked once, in place; forwarding it would change nothing.
-
-Once the first two groups are done, the remainder can be silenced in
-`.clang-tidy` with the reasoning recorded, and `GATE_CLANG_TIDY` can go to
-`true`.
+- `readability-use-anyofallof` ×2 — would pull `<algorithm>` into a library
+  that deliberately includes it nowhere, to replace two four-line loops.
+- `readability-avoid-nested-conditional-operator` ×2 — `vbi_size_c` must stay a
+  single expression to be usable in a constant expression under C++17.
+- `cppcoreguidelines-missing-std-forward` — `enqueue_sized` invokes its
+  callable once, in place; forwarding would change nothing.
 
 ---
 

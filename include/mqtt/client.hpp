@@ -96,15 +96,15 @@ constexpr size_t at_least_one(size_t n) noexcept { return (n > 0) ? n : 1; }
 /// static MyClock                clock;
 /// static mqtt::Client<MyConfig> client{transport, clock};
 /// @endcode
+// Deriving from ConfigCheck is what fires its static_asserts: a base class has
+// to be a complete type, which instantiates the template. It is a base rather
+// than a member because an empty *member* still costs a byte plus alignment
+// padding -- eight bytes here -- whereas an empty base costs nothing under the
+// empty base optimisation, and sizeof(Client<Cfg>) is a documented promise.
+// Private, because it is a build-time assertion and not part of the interface.
 template <typename Cfg = DefaultConfig>
-class Client
+class Client : private ConfigCheck<Cfg>
 {
-    // Instantiating ConfigCheck is what fires its static_asserts. It is
-    // referenced here rather than held as a member: an empty member is still
-    // one byte plus alignment padding, and this is the one type in the library
-    // whose sizeof() is a documented promise.
-    static_assert(sizeof(ConfigCheck<Cfg>) > 0, "configuration check");
-
 public:
     /// Handler for a received message. The message's topic and payload are
     /// views into the receive buffer and are valid only for the call.
@@ -137,8 +137,15 @@ public:
     {
     }
 
+    // Neither copyable nor movable: the client borrows a transport and a clock
+    // by reference and is expected to live in .bss for the life of the program.
+    // Moving one mid-session would leave the transport talking to a corpse.
+    ~Client() = default;
+
     Client(const Client&)            = delete;
     Client& operator=(const Client&) = delete;
+    Client(Client&&)                 = delete;
+    Client& operator=(Client&&)      = delete;
 
     //--------------------------------------------------------------------------
     // Callbacks. All are optional and all are invoked from within step().
@@ -1489,11 +1496,12 @@ private:
     etl::vector<Subscription, kSubSlots>           subscriptions_{};
     etl::vector<PendingAck, kAckSlots>             pending_{};
 
-    MessageHandler    on_message_{};
-    ConnectHandler    on_connect_{};
-    DisconnectHandler on_disconnect_{};
-    DeliveryHandler   on_delivery_{};
-    SubackHandler     on_suback_{};
+    // etl::delegate default-constructs to "unset"; no initialiser needed.
+    MessageHandler    on_message_;
+    ConnectHandler    on_connect_;
+    DisconnectHandler on_disconnect_;
+    DeliveryHandler   on_delivery_;
+    SubackHandler     on_suback_;
 
     ConnackInfo connack_{};
     State       state_      = State::Idle;
