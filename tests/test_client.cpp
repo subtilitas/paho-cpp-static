@@ -739,6 +739,227 @@ TEST(client_resubscribes_after_a_clean_session_reconnect)
 }
 
 //------------------------------------------------------------------------------
+// Argument validation
+//
+// Each of these is a documented refusal. Until now the suite only ever passed
+// arguments that were accepted, so every one of these guards had its rejecting
+// side untaken.
+//------------------------------------------------------------------------------
+
+TEST(client_rejects_credentials_longer_than_the_config)
+{
+    Fixture        f;
+    ConnectOptions opts = f.default_options();
+
+    static const char long_name[DefaultConfig::max_username_len + 2] = {};
+    opts.username = etl::string_view(long_name, sizeof(long_name));
+    CHECK(f.client.connect(opts) == Error::InvalidArgument);
+
+    opts.username                                                     = etl::string_view("u");
+    static const uint8_t long_pw[DefaultConfig::max_password_len + 2] = {};
+    opts.password = etl::span<const uint8_t>(long_pw, sizeof(long_pw));
+    CHECK(f.client.connect(opts) == Error::InvalidArgument);
+}
+
+TEST(client_rejects_a_will_topic_that_is_not_a_topic_name)
+{
+    Fixture        f;
+    ConnectOptions opts = f.default_options();
+    opts.will.topic     = etl::string_view("sensors/+/temp");   // wildcards are filters
+    CHECK(f.client.connect(opts) == Error::InvalidArgument);
+}
+
+TEST(client_rejects_a_publish_topic_longer_than_the_config)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    // Real characters, not NULs: is_valid_topic_name() runs first, and a NUL
+    // would be rejected as malformed before the length check was reached.
+    char long_topic[TestConfig::max_topic_len + 1];
+    for (char& c : long_topic)
+        c = 'x';
+
+    CHECK(f.client.publish(etl::string_view(long_topic, sizeof(long_topic)),
+                           etl::string_view("payload")) == Error::TopicTooLong);
+}
+
+TEST(client_rejects_more_filters_than_one_packet_may_carry)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    // max_topics_per_request is 2.
+    const TopicSubscription three[3] = {{etl::string_view("a"), QoS::AtMostOnce},
+                                        {etl::string_view("b"), QoS::AtMostOnce},
+                                        {etl::string_view("c"), QoS::AtMostOnce}};
+    CHECK(f.client.subscribe(etl::span<const TopicSubscription>(three, 3)) ==
+          Error::InvalidArgument);
+    CHECK(f.client.subscribe(etl::span<const TopicSubscription>()) == Error::InvalidArgument);
+
+    const etl::string_view filters[3] = {etl::string_view("a"), etl::string_view("b"),
+                                         etl::string_view("c")};
+    CHECK(f.client.unsubscribe(etl::span<const etl::string_view>(filters, 3)) ==
+          Error::InvalidArgument);
+    CHECK(f.client.unsubscribe(etl::span<const etl::string_view>()) == Error::InvalidArgument);
+}
+
+TEST(client_refuses_to_subscribe_or_unsubscribe_while_disconnected)
+{
+    Fixture f;
+    CHECK(f.client.subscribe(etl::string_view("a/b")) == Error::NotConnected);
+    CHECK(f.client.unsubscribe(etl::string_view("a/b")) == Error::NotConnected);
+    CHECK(f.client.publish(etl::string_view("a/b"), etl::string_view("x")) ==
+          Error::NotConnected);
+}
+
+TEST(client_reports_a_full_pending_ack_table)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    // max_pending_acks is 2; leave both outstanding by never acking them.
+    CHECK(f.client.subscribe(etl::string_view("a")) == Error::Ok);
+    CHECK(f.client.subscribe(etl::string_view("b")) == Error::Ok);
+    CHECK(f.client.subscribe(etl::string_view("c")) == Error::NoPendingAckSlot);
+    CHECK(f.client.unsubscribe(etl::string_view("a")) == Error::NoPendingAckSlot);
+}
+
+TEST(client_unsubscribes_a_filter_it_never_held)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    // Legal, and the UNSUBSCRIBE still goes out: the broker is the authority on
+    // what we are subscribed to, not our table.
+    uint16_t id = 0;
+    CHECK(f.client.unsubscribe(etl::string_view("never/subscribed"), &id) == Error::Ok);
+    f.client.step();
+    CHECK(sim::find_sent(f.transport, PacketType::Unsubscribe).valid);
+
+    sim::push_unsuback(f.transport, id);
+    CHECK(f.client.step() == Error::Ok);
+}
+
+//------------------------------------------------------------------------------
+// Lifecycle edges
+//------------------------------------------------------------------------------
+
+TEST(client_disconnect_and_step_are_safe_when_idle)
+{
+    Fixture f;
+    CHECK(f.client.state() == State::Idle);
+    CHECK(f.client.disconnect() == Error::NotConnected);
+    CHECK(f.client.step() == Error::Ok);   // nothing to do, and no harm done
+}
+
+TEST(client_disconnect_before_connack_closes_without_a_disconnect_packet)
+{
+    Fixture f;
+    CHECK(f.client.connect(f.default_options()) == Error::Ok);
+    f.client.step();
+    REQUIRE(f.client.state() == State::AwaitingConnack);
+
+    // Not Connected yet, so there is no session to end politely.
+    CHECK(f.client.disconnect() == Error::Ok);
+    CHECK(f.client.state() == State::Idle);
+    CHECK(!sim::find_sent(f.transport, PacketType::Disconnect).valid);
+}
+
+TEST(client_keep_alive_of_zero_disables_pinging)
+{
+    Fixture        f;
+    ConnectOptions opts = f.default_options();
+    opts.keep_alive_s   = 0;   // MQTT 3.1.1 3.1.2.10: keep-alive off
+
+    CHECK(f.client.connect(opts) == Error::Ok);
+    f.client.step();
+    sim::push_connack(f.transport, false);
+    f.client.step();
+    REQUIRE(f.client.is_connected());
+
+    f.transport.clear_sent();
+    f.clock.advance(10u * 60u * 1000u);   // ten minutes of silence
+    CHECK(f.client.step() == Error::Ok);
+
+    CHECK_EQ(sim::count_sent(f.transport, PacketType::Pingreq), size_t{0});
+    CHECK(f.client.is_connected());
+}
+
+//------------------------------------------------------------------------------
+// Packets the peer should not have sent, and acks for things we forgot
+//------------------------------------------------------------------------------
+
+TEST(client_rejects_a_pingresp_with_a_body)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    const uint8_t fat_pingresp[] = {0xD0, 0x01, 0x00};
+    f.transport.push_inbound(fat_pingresp, sizeof(fat_pingresp));
+    CHECK(f.client.step() == Error::MalformedPacket);
+}
+
+TEST(client_rejects_a_second_connack)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    sim::push_connack(f.transport, false);
+    CHECK(f.client.step() == Error::ProtocolViolation);
+}
+
+TEST(client_rejects_a_publish_before_the_session_is_up)
+{
+    Fixture f;
+    CHECK(f.client.connect(f.default_options()) == Error::Ok);
+    f.client.step();
+    REQUIRE(f.client.state() == State::AwaitingConnack);
+
+    sim::push_publish(f.transport, "a/b", "early");
+    CHECK(f.client.step() == Error::ProtocolViolation);
+}
+
+// A broker may repeat an acknowledgement, or send one for a message we have
+// already completed. Neither is a reason to drop the connection.
+TEST(client_tolerates_acks_for_ids_it_is_not_tracking)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    for (const PacketType t : {PacketType::Puback, PacketType::Pubrec, PacketType::Pubcomp})
+    {
+        sim::push_ack(f.transport, t, 0x4242);
+        CHECK(f.client.step() == Error::Ok);
+        CHECK(f.client.is_connected());
+    }
+
+    const uint8_t granted[] = {0x00};
+    sim::push_suback(f.transport, 0x4243, granted, 1);
+    CHECK(f.client.step() == Error::Ok);
+
+    sim::push_unsuback(f.transport, 0x4244);
+    CHECK(f.client.step() == Error::Ok);
+    CHECK(f.client.is_connected());
+}
+
+TEST(client_rejects_a_suback_that_answers_the_wrong_number_of_filters)
+{
+    Fixture f;
+    REQUIRE(f.bring_up());
+
+    uint16_t id = 0;
+    CHECK(f.client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce,
+                             TestClient::MessageHandler(), &id) == Error::Ok);
+    f.client.step();
+
+    // One filter was requested; two codes come back.
+    const uint8_t two_codes[] = {0x00, 0x01};
+    sim::push_suback(f.transport, id, two_codes, 2);
+    CHECK(f.client.step() == Error::ProtocolViolation);
+}
+
+//------------------------------------------------------------------------------
 // Keep-alive
 //------------------------------------------------------------------------------
 
