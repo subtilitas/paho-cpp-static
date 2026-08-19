@@ -223,6 +223,15 @@ the live figure, which is why no number is written out here. Scope is
 `include/mqtt/` and `src/` only; tests, examples and the fetched ETL checkout are
 excluded, since counting them would flatter the number rather than measure it.
 
+**The badge reads lower than `gcovr` reports, and both are right.** gcovr counts
+a line as covered if it executed at all. Codecov additionally tracks *partials* —
+a line whose branches were only partly taken, such as an `if` that was never
+false — and a partial is not a hit. So a guard clause that every test walks past
+but none trips counts once for gcovr and against you on the badge. The badge is
+therefore closer to branch coverage than to line coverage, and it is the harder
+number to move; chase it by testing the untaken side of a condition, not by
+executing more lines.
+
 Instrumentation is applied `PUBLIC`, which matters more than it sounds: most of
 this library is templates in headers, so the code under test is compiled into
 the *test* objects rather than into `libpaho_cpp_static.a`. Measuring only the

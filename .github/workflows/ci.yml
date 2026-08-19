@@ -20,9 +20,13 @@ env:
 
   # The floor, not the target. Set a couple of points below where the suite
   # actually sits so ordinary churn does not trip it, and raise it deliberately
-  # rather than letting it drift. Current: 89.8% line, 80.4% branch.
-  COVERAGE_MIN_LINE: 87
-  COVERAGE_MIN_BRANCH: 78
+  # rather than letting it drift. Current: 91.9% line, 83.9% branch.
+  #
+  # Note these are gcovr's definitions. The Codecov badge reads lower because it
+  # counts a partially-branched line as a partial rather than a hit; see the
+  # Coverage section of the README.
+  COVERAGE_MIN_LINE: 89
+  COVERAGE_MIN_BRANCH: 81
 
 jobs:
   build:
