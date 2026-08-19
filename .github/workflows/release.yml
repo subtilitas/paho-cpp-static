@@ -50,11 +50,12 @@ jobs:
           tag="${{ github.event.inputs.tag || github.ref_name }}"
           tagged="${tag#v}"
 
-          # This repository tags v1.1 and v1.3 while CMake declares 1.3.0, so
-          # compare on meaning rather than on spelling: pad both to major.minor
-          # .patch first. v1.3 and v1.3.0 are then the same release, and a tag
-          # that genuinely disagrees with project(VERSION ...) -- which would
-          # ship archives named after a version nobody declared -- still fails.
+          # Tags here have been written both ways -- v1.3 as well as v0.1.0 --
+          # while CMake always declares three components. So compare on meaning
+          # rather than on spelling: pad both to major.minor.patch first. v0.2
+          # and v0.2.0 are then the same release, and a tag that genuinely
+          # disagrees with project(VERSION ...) -- which would ship archives
+          # named after a version nobody declared -- still fails.
           pad3() {
             case "$(printf '%s' "$1" | tr -cd '.' | wc -c)" in
               0) printf '%s.0.0' "$1" ;;
@@ -75,8 +76,8 @@ jobs:
             exit 1
           fi
 
-          # Archives are named from the declared version, so v1.5 and v1.5.0
-          # both produce paho-cpp-static-1.5.0-<platform>.
+          # Archives are named from the declared version, so a v0.2 tag and a
+          # v0.2.0 tag both produce paho-cpp-static-0.2.0-<platform>.
           echo "tag=$tag"         >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "releasing $tag as version $version"
