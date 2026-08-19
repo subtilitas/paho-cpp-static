@@ -46,14 +46,14 @@ struct Fixture
     {
         if (client.connect(default_options()) != Error::Ok)
             return false;
-        client.step();                       // transport connect + CONNECT out
+        client.step();   // transport connect + CONNECT out
         sim::push_connack(transport, session_present);
-        client.step();                       // consume CONNACK
+        client.step();   // consume CONNACK
         return client.is_connected();
     }
 };
 
-} // namespace
+}   // namespace
 
 //------------------------------------------------------------------------------
 // Handshake
@@ -62,8 +62,8 @@ struct Fixture
 TEST(client_completes_connect_handshake)
 {
     Fixture f;
-    int  connects = 0;
-    auto on_conn  = [&](const ConnackInfo&) { ++connects; };
+    int     connects = 0;
+    auto    on_conn  = [&](const ConnackInfo&) { ++connects; };
     f.client.on_connect(on_conn);
 
     CHECK(f.client.state() == State::Idle);
@@ -140,7 +140,7 @@ TEST(client_rejects_anonymous_id_on_a_resumable_session)
 {
     // MQTT-3.1.3-8: an empty client id asks the broker to assign one, which it
     // can only do for a session it is not expected to remember.
-    Fixture f;
+    Fixture        f;
     ConnectOptions opts = f.default_options();
     opts.client_id      = etl::string_view("");
 
@@ -160,9 +160,9 @@ TEST(client_rejects_second_connect_while_active)
 
 TEST(client_rejects_oversized_client_id)
 {
-    Fixture f;
+    Fixture        f;
     ConnectOptions opts = f.default_options();
-    opts.client_id = etl::string_view("this-client-id-is-far-too-long-for-the-config");
+    opts.client_id      = etl::string_view("this-client-id-is-far-too-long-for-the-config");
     CHECK(f.client.connect(opts) == Error::InvalidArgument);
 }
 
@@ -196,8 +196,8 @@ TEST(client_completes_qos1_handshake)
     f.client.on_delivery_complete(on_done);
 
     uint16_t id = 0;
-    CHECK(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"),
-                           QoS::AtLeastOnce, false, &id) == Error::Ok);
+    CHECK(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"), QoS::AtLeastOnce,
+                           false, &id) == Error::Ok);
     CHECK(id != 0);
     CHECK_EQ(f.client.inflight_count(), size_t{1});
 
@@ -225,8 +225,8 @@ TEST(client_completes_qos2_handshake)
     f.client.on_delivery_complete(on_done);
 
     uint16_t id = 0;
-    CHECK(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"),
-                           QoS::ExactlyOnce, false, &id) == Error::Ok);
+    CHECK(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"), QoS::ExactlyOnce,
+                           false, &id) == Error::Ok);
     f.client.step();
     CHECK(sim::find_sent(f.transport, PacketType::Publish).valid);
 
@@ -252,13 +252,13 @@ TEST(client_reports_full_inflight_window)
     Fixture f;
     REQUIRE(f.bring_up());
 
-    CHECK(f.client.publish(etl::string_view("a"), etl::string_view("1"),
-                           QoS::AtLeastOnce) == Error::Ok);
-    CHECK(f.client.publish(etl::string_view("b"), etl::string_view("2"),
-                           QoS::AtLeastOnce) == Error::Ok);
+    CHECK(f.client.publish(etl::string_view("a"), etl::string_view("1"), QoS::AtLeastOnce) ==
+          Error::Ok);
+    CHECK(f.client.publish(etl::string_view("b"), etl::string_view("2"), QoS::AtLeastOnce) ==
+          Error::Ok);
     // max_inflight_out is 2.
-    CHECK(f.client.publish(etl::string_view("c"), etl::string_view("3"),
-                           QoS::AtLeastOnce) == Error::NoInflightSlot);
+    CHECK(f.client.publish(etl::string_view("c"), etl::string_view("3"), QoS::AtLeastOnce) ==
+          Error::NoInflightSlot);
     CHECK_EQ(f.client.inflight_count(), size_t{2});
 }
 
@@ -269,14 +269,12 @@ TEST(client_rejects_payload_larger_than_persisted_slot)
 
     // max_persisted_msg_size is 64; this cannot be stored for retransmission.
     uint8_t big[100] = {};
-    CHECK(f.client.publish(etl::string_view("a/b"),
-                           etl::span<const uint8_t>(big, sizeof(big)),
+    CHECK(f.client.publish(etl::string_view("a/b"), etl::span<const uint8_t>(big, sizeof(big)),
                            QoS::AtLeastOnce) == Error::PayloadTooLarge);
     CHECK_EQ(f.client.inflight_count(), size_t{0});
 
     // The same payload is fine at QoS 0, which needs no retransmission copy.
-    CHECK(f.client.publish(etl::string_view("a/b"),
-                           etl::span<const uint8_t>(big, sizeof(big)),
+    CHECK(f.client.publish(etl::string_view("a/b"), etl::span<const uint8_t>(big, sizeof(big)),
                            QoS::AtMostOnce) == Error::Ok);
 }
 
@@ -304,8 +302,8 @@ TEST(client_retransmits_unacked_publish_with_dup)
     f.transport.clear_sent();
 
     uint16_t id = 0;
-    CHECK(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"),
-                           QoS::AtLeastOnce, false, &id) == Error::Ok);
+    CHECK(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"), QoS::AtLeastOnce,
+                           false, &id) == Error::Ok);
     f.client.step();
     CHECK_EQ(sim::count_sent(f.transport, PacketType::Publish), size_t{1});
 
@@ -327,10 +325,10 @@ TEST(client_delivers_qos0_message)
     Fixture f;
     REQUIRE(f.bring_up());
 
-    int  count = 0;
-    char topic_seen[32] = {};
+    int  count            = 0;
+    char topic_seen[32]   = {};
     char payload_seen[32] = {};
-    auto on_msg = [&](const Message& m) {
+    auto on_msg           = [&](const Message& m) {
         ++count;
         std::memcpy(topic_seen, m.topic.data(), m.topic.size());
         std::memcpy(payload_seen, m.payload.data(), m.payload.size());
@@ -487,8 +485,8 @@ TEST(client_unsubscribes_on_unsuback)
     REQUIRE(f.bring_up());
 
     uint16_t sub_id = 0;
-    f.client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce,
-                       TestClient::MessageHandler(), &sub_id);
+    f.client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce, TestClient::MessageHandler(),
+                       &sub_id);
     f.client.step();
     const uint8_t granted[] = {0x00};
     sim::push_suback(f.transport, sub_id, granted, 1);
@@ -515,9 +513,9 @@ TEST(client_survives_a_refusal_that_compacts_the_table)
     Fixture f;
     REQUIRE(f.bring_up());
 
-    int hits_cd = 0;
-    auto h_ab   = [](const Message&) {};
-    auto h_cd   = [&](const Message&) { ++hits_cd; };
+    int  hits_cd = 0;
+    auto h_ab    = [](const Message&) {};
+    auto h_cd    = [&](const Message&) { ++hits_cd; };
 
     const TopicSubscription ab[2] = {{etl::string_view("a"), QoS::AtMostOnce},
                                      {etl::string_view("b"), QoS::AtMostOnce}};
@@ -574,9 +572,9 @@ TEST(client_unsubscribes_regardless_of_argument_order)
 
     // Name the later entry first.
     const etl::string_view filters[2] = {etl::string_view("c"), etl::string_view("a")};
-    uint16_t uid = 0;
-    CHECK(f.client.unsubscribe(etl::span<const etl::string_view>(filters, 2), &uid)
-          == Error::Ok);
+    uint16_t               uid        = 0;
+    CHECK(f.client.unsubscribe(etl::span<const etl::string_view>(filters, 2), &uid) ==
+          Error::Ok);
     f.client.step();
     sim::push_unsuback(f.transport, uid);
     f.client.step();
@@ -620,8 +618,8 @@ TEST(client_resubscribes_when_broker_lost_the_session)
     REQUIRE(f.bring_up());
 
     uint16_t id = 0;
-    f.client.subscribe(etl::string_view("a/b"), QoS::AtLeastOnce,
-                       TestClient::MessageHandler(), &id);
+    f.client.subscribe(etl::string_view("a/b"), QoS::AtLeastOnce, TestClient::MessageHandler(),
+                       &id);
     f.client.step();
     const uint8_t granted[] = {0x01};
     sim::push_suback(f.transport, id, granted, 1);
@@ -713,9 +711,9 @@ TEST(client_drops_connection_when_pingresp_never_arrives)
     f.client.on_disconnect(on_dis);
 
     f.clock.advance(8000);
-    f.client.step();            // PINGREQ goes out
+    f.client.step();   // PINGREQ goes out
 
-    f.clock.advance(10001);     // one full keep-alive with no PINGRESP
+    f.clock.advance(10001);   // one full keep-alive with no PINGRESP
     f.client.step();
 
     CHECK(reason == Error::KeepAliveTimeout);
@@ -792,12 +790,11 @@ TEST(client_defers_acks_instead_of_dropping_the_session)
     uint8_t filler[250]      = {};
     for (int i = 0; i < 2; ++i)
         CHECK(f.client.publish(etl::string_view("t"),
-                               etl::span<const uint8_t>(filler, sizeof(filler)))
-              == Error::Ok);
+                               etl::span<const uint8_t>(filler, sizeof(filler))) == Error::Ok);
     CHECK_EQ(f.client.tx_pending(), size_t{512});
 
-    int delivered = 0;
-    auto sink     = [&](const Message&) { ++delivered; };
+    int  delivered = 0;
+    auto sink      = [&](const Message&) { ++delivered; };
     f.client.on_message(sink);
 
     sim::push_publish(f.transport, "t", "x", QoS::AtLeastOnce, 7);
@@ -957,8 +954,8 @@ TEST(client_keeps_inflight_across_a_non_clean_reconnect)
     REQUIRE(f.client.is_connected());
 
     uint16_t id = 0;
-    f.client.publish(etl::string_view("a/b"), etl::string_view("hi"),
-                     QoS::AtLeastOnce, false, &id);
+    f.client.publish(etl::string_view("a/b"), etl::string_view("hi"), QoS::AtLeastOnce, false,
+                     &id);
     f.client.step();
     CHECK_EQ(f.client.inflight_count(), size_t{1});
 

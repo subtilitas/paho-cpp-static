@@ -45,18 +45,14 @@ struct Ipv4
     uint8_t octets[4] = {};
 
     constexpr Ipv4() noexcept = default;
-    constexpr Ipv4(uint8_t a, uint8_t b, uint8_t c, uint8_t d) noexcept
-        : octets{a, b, c, d}
-    {
-    }
+    constexpr Ipv4(uint8_t a, uint8_t b, uint8_t c, uint8_t d) noexcept : octets{a, b, c, d} {}
 
     /// The address as a host-order 32-bit value, most significant octet first.
     constexpr uint32_t to_uint32() const noexcept
     {
         return (static_cast<uint32_t>(octets[0]) << 24) |
                (static_cast<uint32_t>(octets[1]) << 16) |
-               (static_cast<uint32_t>(octets[2]) << 8) |
-               static_cast<uint32_t>(octets[3]);
+               (static_cast<uint32_t>(octets[2]) << 8) | static_cast<uint32_t>(octets[3]);
     }
 };
 
@@ -306,6 +302,6 @@ private:
     bool     connected_ = false;
 };
 
-} // namespace example
+}   // namespace example
 
-#endif // MQTT_TCP_IP_TRANSPORT_HPP
+#endif   // MQTT_TCP_IP_TRANSPORT_HPP

@@ -30,16 +30,16 @@ static_assert(sizeof(mqtt::Client<Config>) < 1500, "client is larger than budget
 
 bool g_done = false;
 
-} // namespace
+}   // namespace
 
 int main(int argc, char** argv)
 {
     const char*    host = (argc > 1) ? argv[1] : "127.0.0.1";
     const uint16_t port = static_cast<uint16_t>((argc > 2) ? std::atoi(argv[2]) : 1883);
 
-    static example::PosixClock      clock;
-    static example::PosixTransport  transport(host, port);
-    static mqtt::Client<Config>     client{transport, clock};
+    static example::PosixClock     clock;
+    static example::PosixTransport transport(host, port);
+    static mqtt::Client<Config>    client{transport, clock};
 
     static auto on_delivered = [](uint16_t id) {
         std::printf("delivered, packet id %u\n", id);
@@ -67,9 +67,9 @@ int main(int argc, char** argv)
 
         if (client.is_connected() && !published)
         {
-            const mqtt::Error e = client.publish(etl::string_view("demo/minimal"),
-                                                 etl::string_view("hello"),
-                                                 mqtt::QoS::AtLeastOnce);
+            const mqtt::Error e =
+                client.publish(etl::string_view("demo/minimal"), etl::string_view("hello"),
+                               mqtt::QoS::AtLeastOnce);
             if (e == mqtt::Error::Ok)
                 published = true;
         }

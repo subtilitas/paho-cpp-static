@@ -11,7 +11,7 @@ bool matches(const char* filter, const char* topic) noexcept
     return topic_matches(etl::string_view(filter), etl::string_view(topic));
 }
 
-} // namespace
+}   // namespace
 
 TEST(topic_exact_matches)
 {
@@ -69,9 +69,9 @@ TEST(topic_filter_validation)
     CHECK(is_valid_filter("sport/+/player1"));
 
     CHECK(!is_valid_filter(""));
-    CHECK(!is_valid_filter("sport/tennis#"));       // '#' not its own level
-    CHECK(!is_valid_filter("sport/tennis/#/rank")); // '#' not final
-    CHECK(!is_valid_filter("sport+"));              // '+' not its own level
+    CHECK(!is_valid_filter("sport/tennis#"));         // '#' not its own level
+    CHECK(!is_valid_filter("sport/tennis/#/rank"));   // '#' not final
+    CHECK(!is_valid_filter("sport+"));                // '+' not its own level
 }
 
 TEST(topic_name_validation)

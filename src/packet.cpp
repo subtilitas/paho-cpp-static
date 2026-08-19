@@ -102,8 +102,7 @@ uint8_t FixedHeader::to_byte() const noexcept
         if (retain) b |= 0x01;
         // clang-format on
     }
-    else if (type == PacketType::Pubrel ||
-             type == PacketType::Subscribe ||
+    else if (type == PacketType::Pubrel || type == PacketType::Subscribe ||
              type == PacketType::Unsubscribe)
     {
         // Spec-mandated fixed flags 0b0010 for these three.
@@ -115,7 +114,7 @@ uint8_t FixedHeader::to_byte() const noexcept
 
 Result<FixedHeader> FixedHeader::from_byte(uint8_t b) noexcept
 {
-    FixedHeader h;
+    FixedHeader   h;
     const uint8_t type_nibble = static_cast<uint8_t>((b >> 4) & 0x0F);
     const uint8_t flags       = static_cast<uint8_t>(b & 0x0F);
 
@@ -126,10 +125,10 @@ Result<FixedHeader> FixedHeader::from_byte(uint8_t b) noexcept
 
     if (h.type == PacketType::Publish)
     {
-        h.dup    = (flags & 0x08) != 0;
+        h.dup           = (flags & 0x08) != 0;
         const uint8_t q = static_cast<uint8_t>((flags >> 1) & 0x03);
         if (q > 2)
-            return Error::MalformedPacket;  // QoS 3 is a protocol error
+            return Error::MalformedPacket;   // QoS 3 is a protocol error
         h.qos    = static_cast<QoS>(q);
         h.retain = (flags & 0x01) != 0;
     }
@@ -137,11 +136,11 @@ Result<FixedHeader> FixedHeader::from_byte(uint8_t b) noexcept
     {
         // Every other packet type has mandated flag bits; a mismatch means we
         // are misaligned in the stream or the peer is broken.
-        const uint8_t expected = (h.type == PacketType::Pubrel ||
-                                  h.type == PacketType::Subscribe ||
-                                  h.type == PacketType::Unsubscribe)
-                                     ? 0x02u
-                                     : 0x00u;
+        const uint8_t expected =
+            (h.type == PacketType::Pubrel || h.type == PacketType::Subscribe ||
+             h.type == PacketType::Unsubscribe)
+                ? 0x02u
+                : 0x00u;
         if (flags != expected)
             return Error::MalformedPacket;
     }
@@ -161,10 +160,14 @@ size_t FixedHeader::header_size() const noexcept
 
 size_t vbi_size(uint32_t value) noexcept
 {
-    if (value > kMaxRemainingLength) return 0;
-    if (value < 128u)                return 1;
-    if (value < 16384u)              return 2;
-    if (value < 2097152u)            return 3;
+    if (value > kMaxRemainingLength)
+        return 0;
+    if (value < 128u)
+        return 1;
+    if (value < 16384u)
+        return 2;
+    if (value < 2097152u)
+        return 3;
     return 4;
 }
 
@@ -193,7 +196,7 @@ Result<size_t> vbi_encode(etl::span<uint8_t> out, uint32_t value) noexcept
 Result<VbiDecode> vbi_decode(etl::span<const uint8_t> in) noexcept
 {
     VbiDecode d;
-    uint32_t multiplier = 1;
+    uint32_t  multiplier = 1;
 
     for (size_t i = 0; i < kMaxVbiBytes; ++i)
     {
@@ -216,7 +219,7 @@ Result<VbiDecode> vbi_decode(etl::span<const uint8_t> in) noexcept
         multiplier *= 128u;
     }
 
-    return Error::MalformedPacket;  // fifth continuation byte
+    return Error::MalformedPacket;   // fifth continuation byte
 }
 
-} // namespace mqtt
+}   // namespace mqtt

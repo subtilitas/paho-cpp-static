@@ -183,6 +183,6 @@ private:
     bool        connected_ = false;
 };
 
-} // namespace example
+}   // namespace example
 
-#endif // MQTT_POSIX_TRANSPORT_HPP
+#endif   // MQTT_POSIX_TRANSPORT_HPP

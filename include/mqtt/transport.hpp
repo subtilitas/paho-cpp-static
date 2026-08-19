@@ -105,9 +105,9 @@ protected:
 /// Wrap-safe elapsed time. Correct across a uint32_t rollover.
 constexpr uint32_t elapsed_ms(uint32_t now, uint32_t since) noexcept
 {
-    return now - since;  // unsigned wraparound is well defined and is the point
+    return now - since;   // unsigned wraparound is well defined and is the point
 }
 
-} // namespace mqtt
+}   // namespace mqtt
 
-#endif // MQTT_TRANSPORT_HPP
+#endif   // MQTT_TRANSPORT_HPP

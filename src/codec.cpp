@@ -28,17 +28,11 @@ bool checked_add(uint32_t& total, uint64_t add) noexcept
 /// which the spec forbids everywhere it appears. Encoding is the last place to
 /// catch it, so check rather than truncate -- a silently masked QoS would put a
 /// packet on the wire that this library's own decoder rejects.
-bool valid_qos(QoS q) noexcept
-{
-    return static_cast<uint8_t>(q) <= 2u;
-}
+bool valid_qos(QoS q) noexcept { return static_cast<uint8_t>(q) <= 2u; }
 
 /// Write the fixed header for `type` with the given flags and remaining length.
-Error write_fixed_header(etl::byte_stream_writer& w,
-                         PacketType type,
-                         uint32_t remaining_length,
-                         bool dup = false,
-                         QoS qos = QoS::AtMostOnce,
+Error write_fixed_header(etl::byte_stream_writer& w, PacketType type, uint32_t remaining_length,
+                         bool dup = false, QoS qos = QoS::AtMostOnce,
                          bool retain = false) noexcept
 {
     FixedHeader h;
@@ -50,8 +44,9 @@ Error write_fixed_header(etl::byte_stream_writer& w,
 
     MQTT_WRITE(w.write<uint8_t>(h.to_byte()));
 
-    uint8_t vbi[kMaxVbiBytes];
-    const Result<size_t> n = vbi_encode(etl::span<uint8_t>(vbi, kMaxVbiBytes), remaining_length);
+    uint8_t              vbi[kMaxVbiBytes];
+    const Result<size_t> n =
+        vbi_encode(etl::span<uint8_t>(vbi, kMaxVbiBytes), remaining_length);
     if (!n.ok())
         return n.error();
 
@@ -59,7 +54,7 @@ Error write_fixed_header(etl::byte_stream_writer& w,
     return Error::Ok;
 }
 
-} // namespace
+}   // namespace
 
 //------------------------------------------------------------------------------
 // Field helpers
@@ -128,9 +123,8 @@ Result<uint32_t> connect_remaining_length(const ConnectOptions& opts) noexcept
     if (opts.will.valid())
     {
         if (!valid_qos(opts.will.qos))
-            return Error::InvalidArgument;  // MQTT-3.1.2-14
-        if (opts.will.topic.size() > kMaxStringLen ||
-            opts.will.payload.size() > kMaxStringLen)
+            return Error::InvalidArgument;   // MQTT-3.1.2-14
+        if (opts.will.topic.size() > kMaxStringLen || opts.will.payload.size() > kMaxStringLen)
             return Error::InvalidArgument;
         if (!checked_add(total, utf8_size(opts.will.topic.size())) ||
             !checked_add(total, utf8_size(opts.will.payload.size())))
@@ -159,8 +153,7 @@ Result<uint32_t> connect_remaining_length(const ConnectOptions& opts) noexcept
     return total;
 }
 
-Result<uint32_t> publish_remaining_length(etl::string_view topic,
-                                          size_t payload_len,
+Result<uint32_t> publish_remaining_length(etl::string_view topic, size_t payload_len,
                                           QoS qos) noexcept
 {
     if (topic.empty() || topic.size() > kMaxStringLen)
@@ -184,32 +177,31 @@ Result<uint32_t> publish_remaining_length(etl::string_view topic,
     return total;
 }
 
-Result<uint32_t> subscribe_remaining_length(
-    etl::span<const TopicSubscription> subs) noexcept
+Result<uint32_t> subscribe_remaining_length(etl::span<const TopicSubscription> subs) noexcept
 {
     if (subs.empty())
-        return Error::InvalidArgument;  // SUBSCRIBE must carry at least one filter
+        return Error::InvalidArgument;   // SUBSCRIBE must carry at least one filter
 
-    uint32_t total = 2;  // packet id
+    uint32_t total = 2;   // packet id
     for (const TopicSubscription& s : subs)
     {
         if (s.filter.empty() || s.filter.size() > kMaxStringLen)
             return Error::InvalidArgument;
         if (!valid_qos(s.qos))
-            return Error::InvalidArgument;  // MQTT-3-8.3-4
-        if (!checked_add(total, utf8_size(s.filter.size()) + 1u))  // +1 requested QoS
+            return Error::InvalidArgument;                          // MQTT-3-8.3-4
+        if (!checked_add(total, utf8_size(s.filter.size()) + 1u))   // +1 requested QoS
             return Error::InvalidArgument;
     }
     return total;
 }
 
-Result<uint32_t> unsubscribe_remaining_length(
-    etl::span<const etl::string_view> filters) noexcept
+Result<uint32_t>
+unsubscribe_remaining_length(etl::span<const etl::string_view> filters) noexcept
 {
     if (filters.empty())
         return Error::InvalidArgument;
 
-    uint32_t total = 2;  // packet id
+    uint32_t total = 2;   // packet id
     for (const etl::string_view& f : filters)
     {
         if (f.empty() || f.size() > kMaxStringLen)
@@ -245,15 +237,20 @@ Result<size_t> encode_connect(etl::span<uint8_t> out, const ConnectOptions& opts
         return Error::BufferTooSmall;
 
     uint8_t flags = 0;
-    if (opts.clean_session)   flags |= 0x02;
+    if (opts.clean_session)
+        flags |= 0x02;
     if (opts.will.valid())
     {
         flags |= 0x04;
-        flags = static_cast<uint8_t>(flags | ((static_cast<uint8_t>(opts.will.qos) & 0x03u) << 3));
-        if (opts.will.retain) flags |= 0x20;
+        flags =
+            static_cast<uint8_t>(flags | ((static_cast<uint8_t>(opts.will.qos) & 0x03u) << 3));
+        if (opts.will.retain)
+            flags |= 0x20;
     }
-    if (!opts.password.empty()) flags |= 0x40;
-    if (!opts.username.empty()) flags |= 0x80;
+    if (!opts.password.empty())
+        flags |= 0x40;
+    if (!opts.username.empty())
+        flags |= 0x80;
 
     if (!w.write<uint8_t>(flags))
         return Error::BufferTooSmall;
@@ -263,41 +260,42 @@ Result<size_t> encode_connect(etl::span<uint8_t> out, const ConnectOptions& opts
     // Payload, in spec order: client id, will topic, will message, user, pass.
     {
         const Error e = write_string(w, opts.client_id);
-        if (e != Error::Ok) return e;
+        if (e != Error::Ok)
+            return e;
     }
     if (opts.will.valid())
     {
         const Error e1 = write_string(w, opts.will.topic);
-        if (e1 != Error::Ok) return e1;
+        if (e1 != Error::Ok)
+            return e1;
         const Error e2 = write_binary(w, opts.will.payload);
-        if (e2 != Error::Ok) return e2;
+        if (e2 != Error::Ok)
+            return e2;
     }
     if (!opts.username.empty())
     {
         const Error e = write_string(w, opts.username);
-        if (e != Error::Ok) return e;
+        if (e != Error::Ok)
+            return e;
     }
     if (!opts.password.empty())
     {
         const Error e = write_binary(w, opts.password);
-        if (e != Error::Ok) return e;
+        if (e != Error::Ok)
+            return e;
     }
 
     return w.size_bytes();
 }
 
-Result<size_t> encode_publish(etl::span<uint8_t> out,
-                              etl::string_view topic,
-                              etl::span<const uint8_t> payload,
-                              QoS qos,
-                              bool retain,
-                              bool dup,
+Result<size_t> encode_publish(etl::span<uint8_t> out, etl::string_view topic,
+                              etl::span<const uint8_t> payload, QoS qos, bool retain, bool dup,
                               uint16_t packet_id) noexcept
 {
     if (qos != QoS::AtMostOnce && packet_id == 0)
-        return Error::InvalidArgument;  // QoS > 0 requires a non-zero packet id
+        return Error::InvalidArgument;   // QoS > 0 requires a non-zero packet id
     if (qos == QoS::AtMostOnce && dup)
-        return Error::InvalidArgument;  // MQTT-3.3.1-2: DUP must be 0 at QoS 0
+        return Error::InvalidArgument;   // MQTT-3.3.1-2: DUP must be 0 at QoS 0
 
     const Result<uint32_t> rl = publish_remaining_length(topic, payload.size(), qos);
     if (!rl.ok())
@@ -335,10 +333,8 @@ Result<size_t> encode_ack(etl::span<uint8_t> out, PacketType type, uint16_t pack
         case PacketType::Puback:
         case PacketType::Pubrec:
         case PacketType::Pubrel:
-        case PacketType::Pubcomp:
-            break;
-        default:
-            return Error::InvalidArgument;
+        case PacketType::Pubcomp: break;
+        default: return Error::InvalidArgument;
     }
 
     if (packet_id == 0)
@@ -356,8 +352,7 @@ Result<size_t> encode_ack(etl::span<uint8_t> out, PacketType type, uint16_t pack
     return w.size_bytes();
 }
 
-Result<size_t> encode_subscribe(etl::span<uint8_t> out,
-                                uint16_t packet_id,
+Result<size_t> encode_subscribe(etl::span<uint8_t> out, uint16_t packet_id,
                                 etl::span<const TopicSubscription> subs) noexcept
 {
     if (packet_id == 0)
@@ -388,8 +383,7 @@ Result<size_t> encode_subscribe(etl::span<uint8_t> out,
     return w.size_bytes();
 }
 
-Result<size_t> encode_unsubscribe(etl::span<uint8_t> out,
-                                  uint16_t packet_id,
+Result<size_t> encode_unsubscribe(etl::span<uint8_t> out, uint16_t packet_id,
                                   etl::span<const etl::string_view> filters) noexcept
 {
     if (packet_id == 0)
@@ -481,7 +475,7 @@ Result<ConnackInfo> decode_connack(etl::span<const uint8_t> body) noexcept
     return info;
 }
 
-Result<Message> decode_publish(const FixedHeader& header,
+Result<Message> decode_publish(const FixedHeader&       header,
                                etl::span<const uint8_t> body) noexcept
 {
     etl::byte_stream_reader r(body.data(), body.size(), kNetworkOrder);
@@ -490,7 +484,7 @@ Result<Message> decode_publish(const FixedHeader& header,
     if (!topic.ok())
         return topic.error();
     if (topic.value().empty())
-        return Error::ProtocolViolation;  // PUBLISH topic must be non-empty
+        return Error::ProtocolViolation;   // PUBLISH topic must be non-empty
 
     Message msg;
     msg.topic  = topic.value();
@@ -517,7 +511,7 @@ Result<Message> decode_publish(const FixedHeader& header,
     // not how much has been consumed (the writer's identically-named method
     // means the opposite). Derive the offset from what is left instead.
     const size_t consumed = body.size() - r.available_bytes();
-    msg.payload = body.subspan(consumed);
+    msg.payload           = body.subspan(consumed);
 
     return msg;
 }
@@ -537,7 +531,7 @@ Result<uint16_t> decode_packet_id(etl::span<const uint8_t> body) noexcept
 Result<SubackView> decode_suback(etl::span<const uint8_t> body) noexcept
 {
     if (body.size() < 3)
-        return Error::MalformedPacket;  // packet id plus at least one return code
+        return Error::MalformedPacket;   // packet id plus at least one return code
 
     const uint16_t id = static_cast<uint16_t>((static_cast<uint16_t>(body[0]) << 8) | body[1]);
     if (id == 0)
@@ -556,5 +550,5 @@ Result<SubackView> decode_suback(etl::span<const uint8_t> body) noexcept
     return v;
 }
 
-} // namespace codec
-} // namespace mqtt
+}   // namespace codec
+}   // namespace mqtt

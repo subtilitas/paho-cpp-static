@@ -64,15 +64,12 @@ int run_all() noexcept
         }
     }
 
-    std::printf("\n%zu tests, %d checks, %d failed checks in %d tests\n",
-                test_count(), checks(), failures(), failed_tests);
+    std::printf("\n%zu tests, %d checks, %d failed checks in %d tests\n", test_count(),
+                checks(), failures(), failed_tests);
 
     return (failed_tests == 0) ? 0 : 1;
 }
 
-} // namespace th
+}   // namespace th
 
-int main()
-{
-    return th::run_all();
-}
+int main() { return th::run_all(); }

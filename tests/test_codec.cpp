@@ -11,7 +11,7 @@ TEST(codec_connect_matches_golden_bytes)
     opts.keep_alive_s  = 60;
     opts.clean_session = true;
 
-    uint8_t buf[64] = {};
+    uint8_t              buf[64] = {};
     const Result<size_t> n = codec::encode_connect(etl::span<uint8_t>(buf, sizeof(buf)), opts);
     REQUIRE(n.ok());
 
@@ -45,7 +45,7 @@ TEST(codec_connect_sets_will_and_credential_flags)
     opts.will.retain   = true;
     opts.clean_session = false;
 
-    uint8_t buf[64] = {};
+    uint8_t              buf[64] = {};
     const Result<size_t> n = codec::encode_connect(etl::span<uint8_t>(buf, sizeof(buf)), opts);
     REQUIRE(n.ok());
 
@@ -59,12 +59,12 @@ TEST(codec_connect_sets_will_and_credential_flags)
 
 TEST(codec_connect_rejects_password_without_username)
 {
-    const uint8_t password[] = {'p'};
+    const uint8_t  password[] = {'p'};
     ConnectOptions opts;
     opts.client_id = etl::string_view("c");
     opts.password  = etl::span<const uint8_t>(password, 1);
 
-    uint8_t buf[64] = {};
+    uint8_t              buf[64] = {};
     const Result<size_t> n = codec::encode_connect(etl::span<uint8_t>(buf, sizeof(buf)), opts);
     CHECK(!n.ok());
     CHECK(n.error() == Error::InvalidArgument);
@@ -75,7 +75,7 @@ TEST(codec_connect_reports_buffer_too_small)
     ConnectOptions opts;
     opts.client_id = etl::string_view("abc");
 
-    uint8_t buf[8] = {};
+    uint8_t              buf[8] = {};
     const Result<size_t> n = codec::encode_connect(etl::span<uint8_t>(buf, sizeof(buf)), opts);
     CHECK(!n.ok());
     CHECK(n.error() == Error::BufferTooSmall);
@@ -85,8 +85,8 @@ TEST(codec_publish_qos0_roundtrips)
 {
     const uint8_t payload[] = {'h', 'i'};
 
-    uint8_t buf[64] = {};
-    const Result<size_t> n = codec::encode_publish(
+    uint8_t              buf[64] = {};
+    const Result<size_t> n       = codec::encode_publish(
         etl::span<uint8_t>(buf, sizeof(buf)), etl::string_view("a/b"),
         etl::span<const uint8_t>(payload, 2), QoS::AtMostOnce, false, false, 0);
     REQUIRE(n.ok());
@@ -101,9 +101,8 @@ TEST(codec_publish_qos0_roundtrips)
     CHECK_EQ(peek.value().total_bytes, n.value());
 
     const Result<Message> msg = codec::decode_publish(
-        peek.value().header,
-        etl::span<const uint8_t>(buf + peek.value().header_bytes,
-                                 peek.value().header.remaining_length));
+        peek.value().header, etl::span<const uint8_t>(buf + peek.value().header_bytes,
+                                                      peek.value().header.remaining_length));
     REQUIRE(msg.ok());
     CHECK(msg.value().topic == etl::string_view("a/b"));
     CHECK_EQ(msg.value().payload.size(), size_t{2});
@@ -115,8 +114,8 @@ TEST(codec_publish_qos2_carries_packet_id)
 {
     const uint8_t payload[] = {'x'};
 
-    uint8_t buf[64] = {};
-    const Result<size_t> n = codec::encode_publish(
+    uint8_t              buf[64] = {};
+    const Result<size_t> n       = codec::encode_publish(
         etl::span<uint8_t>(buf, sizeof(buf)), etl::string_view("t"),
         etl::span<const uint8_t>(payload, 1), QoS::ExactlyOnce, true, true, 0x1234);
     REQUIRE(n.ok());
@@ -129,9 +128,8 @@ TEST(codec_publish_qos2_carries_packet_id)
     REQUIRE(peek.ok());
 
     const Result<Message> msg = codec::decode_publish(
-        peek.value().header,
-        etl::span<const uint8_t>(buf + peek.value().header_bytes,
-                                 peek.value().header.remaining_length));
+        peek.value().header, etl::span<const uint8_t>(buf + peek.value().header_bytes,
+                                                      peek.value().header.remaining_length));
     REQUIRE(msg.ok());
     CHECK_EQ(msg.value().packet_id, uint16_t{0x1234});
     CHECK(msg.value().qos == QoS::ExactlyOnce);
@@ -142,10 +140,10 @@ TEST(codec_publish_qos2_carries_packet_id)
 
 TEST(codec_publish_rejects_qos_without_packet_id)
 {
-    uint8_t buf[32] = {};
-    const Result<size_t> n = codec::encode_publish(
-        etl::span<uint8_t>(buf, sizeof(buf)), etl::string_view("t"),
-        etl::span<const uint8_t>(), QoS::AtLeastOnce, false, false, 0);
+    uint8_t              buf[32] = {};
+    const Result<size_t> n =
+        codec::encode_publish(etl::span<uint8_t>(buf, sizeof(buf)), etl::string_view("t"),
+                              etl::span<const uint8_t>(), QoS::AtLeastOnce, false, false, 0);
     CHECK(!n.ok());
     CHECK(n.error() == Error::InvalidArgument);
 }
@@ -156,9 +154,8 @@ TEST(codec_publish_decode_rejects_empty_topic)
     h.type             = PacketType::Publish;
     h.remaining_length = 2;
 
-    const uint8_t body[] = {0x00, 0x00};
-    const Result<Message> msg =
-        codec::decode_publish(h, etl::span<const uint8_t>(body, 2));
+    const uint8_t         body[] = {0x00, 0x00};
+    const Result<Message> msg    = codec::decode_publish(h, etl::span<const uint8_t>(body, 2));
     CHECK(!msg.ok());
     CHECK(msg.error() == Error::ProtocolViolation);
 }
@@ -170,9 +167,8 @@ TEST(codec_publish_decode_rejects_truncated_topic)
     h.remaining_length = 3;
 
     // Claims a 5-byte topic but only supplies one byte.
-    const uint8_t body[] = {0x00, 0x05, 'a'};
-    const Result<Message> msg =
-        codec::decode_publish(h, etl::span<const uint8_t>(body, 3));
+    const uint8_t         body[] = {0x00, 0x05, 'a'};
+    const Result<Message> msg    = codec::decode_publish(h, etl::span<const uint8_t>(body, 3));
     CHECK(!msg.ok());
     CHECK(msg.error() == Error::MalformedPacket);
 }
@@ -185,22 +181,21 @@ TEST(codec_publish_decode_rejects_dup_on_qos0)
     h.qos              = QoS::AtMostOnce;
     h.remaining_length = 3;
 
-    const uint8_t body[] = {0x00, 0x01, 't'};
-    const Result<Message> msg =
-        codec::decode_publish(h, etl::span<const uint8_t>(body, 3));
+    const uint8_t         body[] = {0x00, 0x01, 't'};
+    const Result<Message> msg    = codec::decode_publish(h, etl::span<const uint8_t>(body, 3));
     CHECK(!msg.ok());
     CHECK(msg.error() == Error::ProtocolViolation);
 }
 
 TEST(codec_acks_roundtrip)
 {
-    const PacketType types[] = {PacketType::Puback, PacketType::Pubrec,
-                                PacketType::Pubrel, PacketType::Pubcomp};
-    const uint8_t first_bytes[] = {0x40, 0x50, 0x62, 0x70};
+    const PacketType types[] = {PacketType::Puback, PacketType::Pubrec, PacketType::Pubrel,
+                                PacketType::Pubcomp};
+    const uint8_t    first_bytes[] = {0x40, 0x50, 0x62, 0x70};
 
     for (size_t i = 0; i < 4; ++i)
     {
-        uint8_t buf[8] = {};
+        uint8_t              buf[8] = {};
         const Result<size_t> n =
             codec::encode_ack(etl::span<uint8_t>(buf, sizeof(buf)), types[i], 0xBEEF);
         REQUIRE(n.ok());
@@ -218,11 +213,10 @@ TEST(codec_acks_roundtrip)
 TEST(codec_ack_rejects_zero_packet_id)
 {
     uint8_t buf[8] = {};
-    CHECK(!codec::encode_ack(etl::span<uint8_t>(buf, sizeof(buf)),
-                             PacketType::Puback, 0).ok());
+    CHECK(!codec::encode_ack(etl::span<uint8_t>(buf, sizeof(buf)), PacketType::Puback, 0).ok());
 
-    const uint8_t body[] = {0x00, 0x00};
-    const Result<uint16_t> id = codec::decode_packet_id(etl::span<const uint8_t>(body, 2));
+    const uint8_t          body[] = {0x00, 0x00};
+    const Result<uint16_t> id     = codec::decode_packet_id(etl::span<const uint8_t>(body, 2));
     CHECK(!id.ok());
     CHECK(id.error() == Error::ProtocolViolation);
 }
@@ -231,13 +225,12 @@ TEST(codec_subscribe_encodes_filters_and_qos)
 {
     const TopicSubscription subs[] = {
         {etl::string_view("a/b"), QoS::AtLeastOnce},
-        {etl::string_view("c"),   QoS::ExactlyOnce},
+        {etl::string_view("c"), QoS::ExactlyOnce},
     };
 
-    uint8_t buf[64] = {};
-    const Result<size_t> n = codec::encode_subscribe(
-        etl::span<uint8_t>(buf, sizeof(buf)), 7,
-        etl::span<const TopicSubscription>(subs, 2));
+    uint8_t              buf[64] = {};
+    const Result<size_t> n       = codec::encode_subscribe(
+        etl::span<uint8_t>(buf, sizeof(buf)), 7, etl::span<const TopicSubscription>(subs, 2));
     REQUIRE(n.ok());
 
     // Bytes straight off the wire, laid out one field per line with the
@@ -255,9 +248,9 @@ TEST(codec_subscribe_encodes_filters_and_qos)
 
 TEST(codec_subscribe_rejects_empty_list)
 {
-    uint8_t buf[16] = {};
-    const Result<size_t> n = codec::encode_subscribe(
-        etl::span<uint8_t>(buf, sizeof(buf)), 1, etl::span<const TopicSubscription>());
+    uint8_t              buf[16] = {};
+    const Result<size_t> n = codec::encode_subscribe(etl::span<uint8_t>(buf, sizeof(buf)), 1,
+                                                     etl::span<const TopicSubscription>());
     CHECK(!n.ok());
     CHECK(n.error() == Error::InvalidArgument);
 }
@@ -266,10 +259,9 @@ TEST(codec_unsubscribe_encodes_filters)
 {
     const etl::string_view filters[] = {etl::string_view("a/b")};
 
-    uint8_t buf[32] = {};
-    const Result<size_t> n = codec::encode_unsubscribe(
-        etl::span<uint8_t>(buf, sizeof(buf)), 9,
-        etl::span<const etl::string_view>(filters, 1));
+    uint8_t              buf[32] = {};
+    const Result<size_t> n       = codec::encode_unsubscribe(
+        etl::span<uint8_t>(buf, sizeof(buf)), 9, etl::span<const etl::string_view>(filters, 1));
     REQUIRE(n.ok());
 
     const uint8_t want[] = {0xA2, 0x07, 0x00, 0x09, 0x00, 0x03, 'a', '/', 'b'};
@@ -278,13 +270,13 @@ TEST(codec_unsubscribe_encodes_filters)
 
 TEST(codec_connack_decodes)
 {
-    const uint8_t accepted[] = {0x01, 0x00};
+    const uint8_t             accepted[] = {0x01, 0x00};
     const Result<ConnackInfo> a = codec::decode_connack(etl::span<const uint8_t>(accepted, 2));
     REQUIRE(a.ok());
     CHECK(a.value().session_present);
     CHECK(a.value().code == ConnackCode::Accepted);
 
-    const uint8_t refused[] = {0x00, 0x05};
+    const uint8_t             refused[] = {0x00, 0x05};
     const Result<ConnackInfo> r = codec::decode_connack(etl::span<const uint8_t>(refused, 2));
     REQUIRE(r.ok());
     CHECK(!r.value().session_present);
@@ -308,7 +300,7 @@ TEST(codec_connack_rejects_reserved_bits_and_bad_code)
 
 TEST(codec_suback_decodes_return_codes)
 {
-    const uint8_t body[] = {0x00, 0x0A, 0x00, 0x02, 0x80};
+    const uint8_t                   body[] = {0x00, 0x0A, 0x00, 0x02, 0x80};
     const Result<codec::SubackView> v = codec::decode_suback(etl::span<const uint8_t>(body, 5));
     REQUIRE(v.ok());
     CHECK_EQ(v.value().packet_id, uint16_t{10});
@@ -332,7 +324,8 @@ TEST(codec_empty_packets)
 {
     uint8_t buf[4] = {};
 
-    const Result<size_t> ping = codec::encode_empty(etl::span<uint8_t>(buf, 4), PacketType::Pingreq);
+    const Result<size_t> ping =
+        codec::encode_empty(etl::span<uint8_t>(buf, 4), PacketType::Pingreq);
     REQUIRE(ping.ok());
     const uint8_t want_ping[] = {0xC0, 0x00};
     CHECK_BYTES(buf, ping.value(), want_ping, 2);
@@ -349,7 +342,7 @@ TEST(codec_empty_packets)
 TEST(codec_peek_reports_incomplete_until_header_arrives)
 {
     // A 200-byte PUBLISH needs a two-byte remaining length.
-    const uint8_t partial[] = {0x30, 0xC8};
+    const uint8_t                   partial[] = {0x30, 0xC8};
     const Result<codec::PacketPeek> p1 =
         codec::peek_header(etl::span<const uint8_t>(partial, 1));
     CHECK(p1.error() == Error::Incomplete);
@@ -358,7 +351,7 @@ TEST(codec_peek_reports_incomplete_until_header_arrives)
         codec::peek_header(etl::span<const uint8_t>(partial, 2));
     CHECK(p2.error() == Error::Incomplete);   // still needs the second VBI byte
 
-    const uint8_t full[] = {0x30, 0xC8, 0x01};
+    const uint8_t                   full[] = {0x30, 0xC8, 0x01};
     const Result<codec::PacketPeek> p3 = codec::peek_header(etl::span<const uint8_t>(full, 3));
     REQUIRE(p3.ok());
     CHECK_EQ(p3.value().header.remaining_length, uint32_t{200});
@@ -375,26 +368,24 @@ TEST(codec_peek_reports_incomplete_until_header_arrives)
 
 TEST(codec_publish_rejects_dup_on_qos0)
 {
-    uint8_t       buf[32]     = {};
-    const uint8_t payload[1]  = {'x'};
+    uint8_t       buf[32]    = {};
+    const uint8_t payload[1] = {'x'};
 
-    CHECK(codec::encode_publish(etl::span<uint8_t>(buf, sizeof(buf)),
-                                etl::string_view("t"),
-                                etl::span<const uint8_t>(payload, 1),
-                                QoS::AtMostOnce, false, /*dup=*/true, 0)
+    CHECK(codec::encode_publish(etl::span<uint8_t>(buf, sizeof(buf)), etl::string_view("t"),
+                                etl::span<const uint8_t>(payload, 1), QoS::AtMostOnce, false,
+                                /*dup=*/true, 0)
               .error() == Error::InvalidArgument);   // MQTT-3.3.1-2
 
     // The same call without DUP is fine.
-    CHECK(codec::encode_publish(etl::span<uint8_t>(buf, sizeof(buf)),
-                                etl::string_view("t"),
-                                etl::span<const uint8_t>(payload, 1),
-                                QoS::AtMostOnce, false, false, 0)
+    CHECK(codec::encode_publish(etl::span<uint8_t>(buf, sizeof(buf)), etl::string_view("t"),
+                                etl::span<const uint8_t>(payload, 1), QoS::AtMostOnce, false,
+                                false, 0)
               .ok());
 }
 
 TEST(codec_rejects_qos_outside_the_defined_range)
 {
-    const QoS bad = static_cast<QoS>(3);
+    const QoS bad     = static_cast<QoS>(3);
     uint8_t   buf[64] = {};
 
     const TopicSubscription sub{etl::string_view("a"), bad};
@@ -406,19 +397,19 @@ TEST(codec_rejects_qos_outside_the_defined_range)
     opts.client_id  = etl::string_view("c");
     opts.will.topic = etl::string_view("w");
     opts.will.qos   = bad;
-    CHECK(codec::encode_connect(etl::span<uint8_t>(buf, sizeof(buf)), opts)
-              .error() == Error::InvalidArgument);   // MQTT-3.1.2-14
+    CHECK(codec::encode_connect(etl::span<uint8_t>(buf, sizeof(buf)), opts).error() ==
+          Error::InvalidArgument);   // MQTT-3.1.2-14
 
-    CHECK(codec::publish_remaining_length(etl::string_view("t"), 1, bad)
-              .error() == Error::InvalidArgument);
+    CHECK(codec::publish_remaining_length(etl::string_view("t"), 1, bad).error() ==
+          Error::InvalidArgument);
 }
 
 TEST(codec_connack_rejects_session_present_with_a_refusal)
 {
     // MQTT-3.2.2-4: a broker that refuses the connection must report no session.
     const uint8_t contradictory[] = {0x01, 0x05};
-    CHECK(codec::decode_connack(etl::span<const uint8_t>(contradictory, 2))
-              .error() == Error::ProtocolViolation);
+    CHECK(codec::decode_connack(etl::span<const uint8_t>(contradictory, 2)).error() ==
+          Error::ProtocolViolation);
 
     const uint8_t consistent[] = {0x00, 0x05};
     CHECK(codec::decode_connack(etl::span<const uint8_t>(consistent, 2)).ok());
@@ -426,12 +417,12 @@ TEST(codec_connack_rejects_session_present_with_a_refusal)
 
 TEST(codec_string_helpers_roundtrip)
 {
-    uint8_t buf[16] = {};
+    uint8_t                 buf[16] = {};
     etl::byte_stream_writer w(reinterpret_cast<char*>(buf), sizeof(buf), codec::kNetworkOrder);
     CHECK(codec::write_string(w, etl::string_view("hey")) == Error::Ok);
     CHECK_EQ(w.size_bytes(), size_t{5});
 
-    etl::byte_stream_reader r(buf, w.size_bytes(), codec::kNetworkOrder);
+    etl::byte_stream_reader        r(buf, w.size_bytes(), codec::kNetworkOrder);
     const Result<etl::string_view> s = codec::read_string(r);
     REQUIRE(s.ok());
     CHECK(s.value() == etl::string_view("hey"));

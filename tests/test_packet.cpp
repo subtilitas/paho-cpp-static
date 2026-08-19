@@ -15,24 +15,24 @@ struct VbiVector
 };
 
 const VbiVector kVectors[] = {
-    {0u,         {0x00, 0, 0, 0},                1},
-    {127u,       {0x7F, 0, 0, 0},                1},
-    {128u,       {0x80, 0x01, 0, 0},             2},
-    {16383u,     {0xFF, 0x7F, 0, 0},             2},
-    {16384u,     {0x80, 0x80, 0x01, 0},          3},
-    {2097151u,   {0xFF, 0xFF, 0x7F, 0},          3},
-    {2097152u,   {0x80, 0x80, 0x80, 0x01},       4},
-    {268435455u, {0xFF, 0xFF, 0xFF, 0x7F},       4},
+    {0u, {0x00, 0, 0, 0}, 1},
+    {127u, {0x7F, 0, 0, 0}, 1},
+    {128u, {0x80, 0x01, 0, 0}, 2},
+    {16383u, {0xFF, 0x7F, 0, 0}, 2},
+    {16384u, {0x80, 0x80, 0x01, 0}, 3},
+    {2097151u, {0xFF, 0xFF, 0x7F, 0}, 3},
+    {2097152u, {0x80, 0x80, 0x80, 0x01}, 4},
+    {268435455u, {0xFF, 0xFF, 0xFF, 0x7F}, 4},
 };
 
-} // namespace
+}   // namespace
 
 TEST(vbi_encodes_spec_boundaries)
 {
     for (const VbiVector& v : kVectors)
     {
-        uint8_t buf[4] = {};
-        const Result<size_t> n = vbi_encode(etl::span<uint8_t>(buf, 4), v.value);
+        uint8_t              buf[4] = {};
+        const Result<size_t> n      = vbi_encode(etl::span<uint8_t>(buf, 4), v.value);
         REQUIRE(n.ok());
         CHECK_EQ(n.value(), v.len);
         CHECK_BYTES(buf, n.value(), v.bytes, v.len);
@@ -53,8 +53,8 @@ TEST(vbi_decodes_spec_boundaries)
 
 TEST(vbi_rejects_out_of_range_value)
 {
-    uint8_t buf[4] = {};
-    const Result<size_t> n = vbi_encode(etl::span<uint8_t>(buf, 4), 268435456u);
+    uint8_t              buf[4] = {};
+    const Result<size_t> n      = vbi_encode(etl::span<uint8_t>(buf, 4), 268435456u);
     CHECK(!n.ok());
     CHECK(n.error() == Error::InvalidArgument);
     CHECK_EQ(vbi_size(268435456u), size_t{0});
@@ -62,8 +62,8 @@ TEST(vbi_rejects_out_of_range_value)
 
 TEST(vbi_encode_reports_small_buffer)
 {
-    uint8_t buf[1] = {};
-    const Result<size_t> n = vbi_encode(etl::span<uint8_t>(buf, 1), 128u);
+    uint8_t              buf[1] = {};
+    const Result<size_t> n      = vbi_encode(etl::span<uint8_t>(buf, 1), 128u);
     CHECK(!n.ok());
     CHECK(n.error() == Error::BufferTooSmall);
 }
@@ -71,8 +71,8 @@ TEST(vbi_encode_reports_small_buffer)
 TEST(vbi_decode_reports_incomplete_prefix)
 {
     // A continuation byte with nothing after it is a valid prefix, not garbage.
-    const uint8_t buf[] = {0x80};
-    const Result<VbiDecode> d = vbi_decode(etl::span<const uint8_t>(buf, 1));
+    const uint8_t           buf[] = {0x80};
+    const Result<VbiDecode> d     = vbi_decode(etl::span<const uint8_t>(buf, 1));
     CHECK(!d.ok());
     CHECK(d.error() == Error::Incomplete);
 
@@ -83,8 +83,8 @@ TEST(vbi_decode_reports_incomplete_prefix)
 
 TEST(vbi_decode_rejects_five_byte_encoding)
 {
-    const uint8_t buf[] = {0x80, 0x80, 0x80, 0x80, 0x01};
-    const Result<VbiDecode> d = vbi_decode(etl::span<const uint8_t>(buf, 5));
+    const uint8_t           buf[] = {0x80, 0x80, 0x80, 0x80, 0x01};
+    const Result<VbiDecode> d     = vbi_decode(etl::span<const uint8_t>(buf, 5));
     CHECK(!d.ok());
     CHECK(d.error() == Error::MalformedPacket);
 }
@@ -94,8 +94,8 @@ TEST(vbi_decode_rejects_non_minimal_encoding)
     // 0x80 0x00 decodes to 0, which is representable in one byte. Paho accepts
     // this; we reject it, because accepting it lets a peer desynchronise the
     // stream framing.
-    const uint8_t buf[] = {0x80, 0x00};
-    const Result<VbiDecode> d = vbi_decode(etl::span<const uint8_t>(buf, 2));
+    const uint8_t           buf[] = {0x80, 0x00};
+    const Result<VbiDecode> d     = vbi_decode(etl::span<const uint8_t>(buf, 2));
     CHECK(!d.ok());
     CHECK(d.error() == Error::MalformedPacket);
 }

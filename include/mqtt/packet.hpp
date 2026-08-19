@@ -64,7 +64,7 @@ static constexpr uint8_t kSubackFailure = 0x80;
 
 /// Protocol constants.
 static constexpr uint8_t  kProtocolLevel_3_1_1 = 4;
-static constexpr uint32_t kMaxRemainingLength  = 268435455u; ///< 256 MB - 1
+static constexpr uint32_t kMaxRemainingLength  = 268435455u;   ///< 256 MB - 1
 static constexpr size_t   kMaxVbiBytes         = 4;
 
 //------------------------------------------------------------------------------
@@ -131,12 +131,12 @@ Result<VbiDecode> vbi_decode(etl::span<const uint8_t> in) noexcept;
 /// to keep -- into your own storage, since we will not allocate for you.
 struct Message
 {
-    etl::string_view          topic;
-    etl::span<const uint8_t>  payload;
-    QoS                       qos       = QoS::AtMostOnce;
-    bool                      retain    = false;
-    bool                      dup       = false;
-    uint16_t                  packet_id = 0;
+    etl::string_view         topic;
+    etl::span<const uint8_t> payload;
+    QoS                      qos       = QoS::AtMostOnce;
+    bool                     retain    = false;
+    bool                     dup       = false;
+    uint16_t                 packet_id = 0;
 };
 
 /// Last will and testament. Views must outlive the connect handshake.
@@ -157,12 +157,12 @@ struct Will
 /// so nothing is retained afterwards. Stack-allocated options are fine.
 struct ConnectOptions
 {
-    etl::string_view client_id;
-    etl::string_view username;                  ///< empty = omit
-    etl::span<const uint8_t> password;          ///< empty = omit
-    Will             will;                      ///< default-constructed = omit
-    uint16_t         keep_alive_s  = 60;
-    bool             clean_session = true;
+    etl::string_view         client_id;
+    etl::string_view         username;   ///< empty = omit
+    etl::span<const uint8_t> password;   ///< empty = omit
+    Will                     will;       ///< default-constructed = omit
+    uint16_t                 keep_alive_s  = 60;
+    bool                     clean_session = true;
 };
 
 /// Result of a completed CONNECT handshake.
@@ -179,6 +179,6 @@ struct TopicSubscription
     QoS              qos = QoS::AtMostOnce;
 };
 
-} // namespace mqtt
+}   // namespace mqtt
 
-#endif // MQTT_PACKET_HPP
+#endif   // MQTT_PACKET_HPP

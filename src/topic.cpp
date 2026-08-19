@@ -116,7 +116,7 @@ bool topic_matches(etl::string_view filter, etl::string_view topic) noexcept
             return true;   // both ran out together
 
         if (!f_more && t_more)
-            return false;  // topic has extra levels the filter does not cover
+            return false;   // topic has extra levels the filter does not cover
 
         if (f_more && !t_more)
         {
@@ -133,4 +133,4 @@ bool topic_matches(etl::string_view filter, etl::string_view topic) noexcept
     return false;
 }
 
-} // namespace mqtt
+}   // namespace mqtt

@@ -24,9 +24,9 @@ using namespace mqtt;
 
 namespace alloc_probe {
 
-volatile bool armed      = false;
-size_t        new_calls  = 0;
-size_t        new_bytes  = 0;
+volatile bool armed     = false;
+size_t        new_calls = 0;
+size_t        new_bytes = 0;
 
 void reset() noexcept
 {
@@ -34,7 +34,7 @@ void reset() noexcept
     new_bytes = 0;
 }
 
-} // namespace alloc_probe
+}   // namespace alloc_probe
 
 void* operator new(size_t size)
 {
@@ -94,7 +94,7 @@ struct LargeConfig : DefaultConfig
     static constexpr size_t max_subscriptions      = 32;
 };
 
-} // namespace
+}   // namespace
 
 TEST(zero_allocations_during_a_full_session)
 {
@@ -106,13 +106,13 @@ TEST(zero_allocations_during_a_full_session)
     static fakes::FakeClock     clock;
     static ProbeClient          client{transport, clock};
 
-    int  messages = 0;
+    int  messages  = 0;
     int  delivered = 0;
-    auto on_msg   = [&](const Message&) { ++messages; };
-    auto on_done  = [&](uint16_t) { ++delivered; };
-    auto on_conn  = [](const ConnackInfo&) {};
-    auto on_dis   = [](Error) {};
-    auto on_sub   = [](uint16_t, etl::span<const uint8_t>) {};
+    auto on_msg    = [&](const Message&) { ++messages; };
+    auto on_done   = [&](uint16_t) { ++delivered; };
+    auto on_conn   = [](const ConnackInfo&) {};
+    auto on_dis    = [](Error) {};
+    auto on_sub    = [](uint16_t, etl::span<const uint8_t>) {};
 
     client.on_message(on_msg);
     client.on_delivery_complete(on_done);
@@ -149,12 +149,12 @@ TEST(zero_allocations_during_a_full_session)
     CHECK(client.publish(etl::string_view("a/b"), etl::string_view("qos0")) == Error::Ok);
 
     uint16_t id1 = 0;
-    CHECK(client.publish(etl::string_view("a/b"), etl::string_view("qos1"),
-                         QoS::AtLeastOnce, false, &id1) == Error::Ok);
+    CHECK(client.publish(etl::string_view("a/b"), etl::string_view("qos1"), QoS::AtLeastOnce,
+                         false, &id1) == Error::Ok);
 
     uint16_t id2 = 0;
-    CHECK(client.publish(etl::string_view("a/b"), etl::string_view("qos2"),
-                         QoS::ExactlyOnce, false, &id2) == Error::Ok);
+    CHECK(client.publish(etl::string_view("a/b"), etl::string_view("qos2"), QoS::ExactlyOnce,
+                         false, &id2) == Error::Ok);
     client.step();
 
     sim::push_ack(transport, PacketType::Puback, id1);
@@ -175,11 +175,11 @@ TEST(zero_allocations_during_a_full_session)
 
     // Keep-alive and retransmission paths.
     uint16_t id3 = 0;
-    client.publish(etl::string_view("a/b"), etl::string_view("retry"),
-                   QoS::AtLeastOnce, false, &id3);
+    client.publish(etl::string_view("a/b"), etl::string_view("retry"), QoS::AtLeastOnce, false,
+                   &id3);
     client.step();
     clock.advance(8000);
-    client.step();                       // PINGREQ plus a retransmission
+    client.step();   // PINGREQ plus a retransmission
     sim::push_pingresp(transport);
     client.step();
     sim::push_ack(transport, PacketType::Puback, id3);
@@ -200,8 +200,8 @@ TEST(zero_allocations_during_a_full_session)
 
     if (alloc_probe::new_calls != 0)
     {
-        std::printf("    %zu allocations totalling %zu bytes\n",
-                    alloc_probe::new_calls, alloc_probe::new_bytes);
+        std::printf("    %zu allocations totalling %zu bytes\n", alloc_probe::new_calls,
+                    alloc_probe::new_bytes);
     }
     CHECK_EQ(alloc_probe::new_calls, size_t{0});
     CHECK_EQ(alloc_probe::new_bytes, size_t{0});

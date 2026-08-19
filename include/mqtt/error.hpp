@@ -51,36 +51,36 @@ enum class Error : uint8_t
     Ok = 0,
 
     // --- flow control (not really failures) ---
-    WouldBlock,        ///< Operation incomplete; call again later. Never an error.
-    Incomplete,        ///< A partial packet was consumed; more bytes needed.
+    WouldBlock,   ///< Operation incomplete; call again later. Never an error.
+    Incomplete,   ///< A partial packet was consumed; more bytes needed.
 
     // --- caller / configuration errors ---
-    InvalidArgument,   ///< A parameter failed validation.
-    NotConnected,      ///< Operation requires an established MQTT session.
-    AlreadyConnected,  ///< connect() called while a session is active.
-    NotSupported,      ///< Feature intentionally omitted from this build.
+    InvalidArgument,    ///< A parameter failed validation.
+    NotConnected,       ///< Operation requires an established MQTT session.
+    AlreadyConnected,   ///< connect() called while a session is active.
+    NotSupported,       ///< Feature intentionally omitted from this build.
 
     // --- capacity exhaustion (the interesting ones on a static build) ---
-    BufferTooSmall,    ///< Serialization target ran out of room.
-    TxQueueFull,       ///< Outgoing byte queue cannot accept the packet right now.
-    NoInflightSlot,    ///< All QoS>0 outbound slots are occupied.
-    NoInboundSlot,     ///< All QoS 2 inbound tracking slots are occupied.
-    NoSubscriptionSlot,///< Subscription table is full.
-    NoPendingAckSlot,  ///< SUBSCRIBE/UNSUBSCRIBE ack tracking table is full.
-    PayloadTooLarge,   ///< Message exceeds the configured persisted-message size.
-    TopicTooLong,      ///< Topic or filter exceeds Config::max_topic_len.
+    BufferTooSmall,       ///< Serialization target ran out of room.
+    TxQueueFull,          ///< Outgoing byte queue cannot accept the packet right now.
+    NoInflightSlot,       ///< All QoS>0 outbound slots are occupied.
+    NoInboundSlot,        ///< All QoS 2 inbound tracking slots are occupied.
+    NoSubscriptionSlot,   ///< Subscription table is full.
+    NoPendingAckSlot,     ///< SUBSCRIBE/UNSUBSCRIBE ack tracking table is full.
+    PayloadTooLarge,      ///< Message exceeds the configured persisted-message size.
+    TopicTooLong,         ///< Topic or filter exceeds Config::max_topic_len.
 
     // --- protocol / peer errors ---
-    MalformedPacket,   ///< Bytes on the wire did not parse.
-    ProtocolViolation, ///< Peer did something the spec forbids.
-    PacketTooLarge,    ///< Inbound packet exceeds the receive buffer.
-    ConnectionRefused, ///< Broker rejected CONNECT; see Client::connack().
-    KeepAliveTimeout,  ///< No PINGRESP within the keep-alive window.
-    ConnectTimeout,    ///< Handshake did not finish within connect_timeout_ms.
+    MalformedPacket,     ///< Bytes on the wire did not parse.
+    ProtocolViolation,   ///< Peer did something the spec forbids.
+    PacketTooLarge,      ///< Inbound packet exceeds the receive buffer.
+    ConnectionRefused,   ///< Broker rejected CONNECT; see Client::connack().
+    KeepAliveTimeout,    ///< No PINGRESP within the keep-alive window.
+    ConnectTimeout,      ///< Handshake did not finish within connect_timeout_ms.
 
     // --- transport errors ---
-    TransportFailure,  ///< Underlying transport reported an unrecoverable error.
-    TransportClosed,   ///< Peer closed the connection.
+    TransportFailure,   ///< Underlying transport reported an unrecoverable error.
+    TransportClosed,    ///< Peer closed the connection.
 };
 
 /// Human-readable name for an error, for logging. Returns a static string;
@@ -108,12 +108,12 @@ public:
     constexpr Result(T value) noexcept : value_(value), error_(Error::Ok) {}
     constexpr Result(Error e) noexcept : value_(T{}), error_(e) {}
 
-    constexpr bool ok() const noexcept { return error_ == Error::Ok; }
+    constexpr bool     ok() const noexcept { return error_ == Error::Ok; }
     constexpr explicit operator bool() const noexcept { return ok(); }
 
     constexpr Error error() const noexcept { return error_; }
-    constexpr T value() const noexcept { return ok() ? value_ : T{}; }
-    constexpr T value_or(T fallback) const noexcept { return ok() ? value_ : fallback; }
+    constexpr T     value() const noexcept { return ok() ? value_ : T{}; }
+    constexpr T     value_or(T fallback) const noexcept { return ok() ? value_ : fallback; }
 
 private:
     T     value_;
@@ -121,9 +121,13 @@ private:
 };
 
 /// Convert a bool-returning ETL stream write into an Error.
-#define MQTT_WRITE(expr) \
-    do { if (!(expr)) return ::mqtt::Error::BufferTooSmall; } while (false)
+#define MQTT_WRITE(expr)                          \
+    do                                            \
+    {                                             \
+        if (!(expr))                              \
+            return ::mqtt::Error::BufferTooSmall; \
+    } while (false)
 
-} // namespace mqtt
+}   // namespace mqtt
 
-#endif // MQTT_ERROR_HPP
+#endif   // MQTT_ERROR_HPP

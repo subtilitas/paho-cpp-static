@@ -20,15 +20,14 @@ using namespace mqtt;
 inline void push_connack(fakes::FakeTransport& t, bool session_present,
                          ConnackCode code = ConnackCode::Accepted) noexcept
 {
-    const uint8_t bytes[] = {0x20, 0x02,
-                             static_cast<uint8_t>(session_present ? 1 : 0),
+    const uint8_t bytes[] = {0x20, 0x02, static_cast<uint8_t>(session_present ? 1 : 0),
                              static_cast<uint8_t>(code)};
     t.push_inbound(bytes, sizeof(bytes));
 }
 
 inline void push_ack(fakes::FakeTransport& t, PacketType type, uint16_t id) noexcept
 {
-    uint8_t buf[8] = {};
+    uint8_t              buf[8] = {};
     const Result<size_t> n = codec::encode_ack(etl::span<uint8_t>(buf, sizeof(buf)), type, id);
     if (n.ok())
         t.push_inbound(buf, n.value());
@@ -40,8 +39,8 @@ inline void push_pingresp(fakes::FakeTransport& t) noexcept
     t.push_inbound(bytes, sizeof(bytes));
 }
 
-inline void push_suback(fakes::FakeTransport& t, uint16_t id,
-                        const uint8_t* codes, size_t count) noexcept
+inline void push_suback(fakes::FakeTransport& t, uint16_t id, const uint8_t* codes,
+                        size_t count) noexcept
 {
     uint8_t buf[32];
     buf[0] = 0x90;
@@ -54,23 +53,22 @@ inline void push_suback(fakes::FakeTransport& t, uint16_t id,
 
 inline void push_unsuback(fakes::FakeTransport& t, uint16_t id) noexcept
 {
-    const uint8_t bytes[] = {0xB0, 0x02,
-                             static_cast<uint8_t>(id >> 8),
+    const uint8_t bytes[] = {0xB0, 0x02, static_cast<uint8_t>(id >> 8),
                              static_cast<uint8_t>(id & 0xFF)};
     t.push_inbound(bytes, sizeof(bytes));
 }
 
 /// Build a PUBLISH as the broker would send it.
 inline void push_publish(fakes::FakeTransport& t, const char* topic, const char* payload,
-                         QoS qos = QoS::AtMostOnce, uint16_t id = 0,
-                         bool dup = false, bool retain = false) noexcept
+                         QoS qos = QoS::AtMostOnce, uint16_t id = 0, bool dup = false,
+                         bool retain = false) noexcept
 {
-    uint8_t buf[512] = {};
-    const size_t payload_len = std::strlen(payload);
-    const Result<size_t> n = codec::encode_publish(
+    uint8_t              buf[512]    = {};
+    const size_t         payload_len = std::strlen(payload);
+    const Result<size_t> n           = codec::encode_publish(
         etl::span<uint8_t>(buf, sizeof(buf)), etl::string_view(topic),
-        etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload), payload_len),
-        qos, retain, dup, id);
+        etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload), payload_len), qos,
+        retain, dup, id);
     if (n.ok())
         t.push_inbound(buf, n.value());
 }
@@ -155,6 +153,6 @@ inline uint16_t sent_ack_id(const SentPacket& p) noexcept
     return static_cast<uint16_t>((static_cast<uint16_t>(p.body[0]) << 8) | p.body[1]);
 }
 
-} // namespace sim
+}   // namespace sim
 
-#endif // MQTT_TEST_BROKER_SIM_HPP
+#endif   // MQTT_TEST_BROKER_SIM_HPP

@@ -42,7 +42,7 @@ static_assert(sizeof(mqtt::Client<NodeConfig>) < 3072, "MQTT client over budget"
 char g_topic[80] = "demo/ip";
 bool g_running   = true;
 
-} // namespace
+}   // namespace
 
 int main(int argc, char** argv)
 {
@@ -61,9 +61,8 @@ int main(int argc, char** argv)
     static example::TcpIpTransport  transport(broker, port);
     static mqtt::Client<NodeConfig> client{transport, clock};
 
-    std::printf("connecting to %u.%u.%u.%u:%u, topic '%s'\n",
-                broker.octets[0], broker.octets[1], broker.octets[2], broker.octets[3],
-                port, g_topic);
+    std::printf("connecting to %u.%u.%u.%u:%u, topic '%s'\n", broker.octets[0],
+                broker.octets[1], broker.octets[2], broker.octets[3], port, g_topic);
     std::printf("client footprint: %zu bytes\n\n", sizeof(client));
 
     static auto on_connect = [](const mqtt::ConnackInfo& info) {
@@ -74,14 +73,11 @@ int main(int argc, char** argv)
         g_running = false;
     };
     static auto on_message = [](const mqtt::Message& m) {
-        std::printf("  <- [%.*s] %.*s\n",
-                    static_cast<int>(m.topic.size()), m.topic.data(),
+        std::printf("  <- [%.*s] %.*s\n", static_cast<int>(m.topic.size()), m.topic.data(),
                     static_cast<int>(m.payload.size()),
                     reinterpret_cast<const char*>(m.payload.data()));
     };
-    static auto on_delivery = [](uint16_t id) {
-        std::printf("  delivered, id %u\n", id);
-    };
+    static auto on_delivery = [](uint16_t id) { std::printf("  delivered, id %u\n", id); };
 
     client.on_connect(on_connect);
     client.on_disconnect(on_disconnect);
@@ -121,11 +117,11 @@ int main(int argc, char** argv)
             char      payload[48];
             const int len = std::snprintf(payload, sizeof(payload), "reading %d", sent);
 
-            if (client.publish(etl::string_view(g_topic),
-                               etl::span<const uint8_t>(
-                                   reinterpret_cast<const uint8_t*>(payload),
-                                   static_cast<size_t>(len)),
-                               mqtt::QoS::AtLeastOnce) == mqtt::Error::Ok)
+            if (client.publish(
+                    etl::string_view(g_topic),
+                    etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload),
+                                             static_cast<size_t>(len)),
+                    mqtt::QoS::AtLeastOnce) == mqtt::Error::Ok)
             {
                 std::printf("  -> %s\n", payload);
                 ++sent;
