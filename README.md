@@ -4,6 +4,8 @@ A minimal MQTT 3.1.1 client in C++17 for targets that cannot afford a heap at
 run time.
 
 [![CI](https://github.com/subtilitas/paho-cpp-static/actions/workflows/ci.yml/badge.svg)](https://github.com/subtilitas/paho-cpp-static/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/subtilitas/paho-cpp-static/actions/workflows/codeql.yml/badge.svg)](https://github.com/subtilitas/paho-cpp-static/actions/workflows/codeql.yml)
+[![SCA](https://github.com/subtilitas/paho-cpp-static/actions/workflows/sca.yml/badge.svg)](https://github.com/subtilitas/paho-cpp-static/actions/workflows/sca.yml)
 [![codecov](https://codecov.io/gh/subtilitas/paho-cpp-static/branch/main/graph/badge.svg)](https://codecov.io/gh/subtilitas/paho-cpp-static)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
