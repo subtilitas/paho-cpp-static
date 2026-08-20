@@ -20,13 +20,18 @@ env:
 
   # The floor, not the target. Set a couple of points below where the suite
   # actually sits so ordinary churn does not trip it, and raise it deliberately
-  # rather than letting it drift. Current: 91.9% line, 83.9% branch.
+  # rather than letting it drift. Current: 93.9% line, 87.3% branch.
   #
   # Note these are gcovr's definitions. The Codecov badge reads lower because it
   # counts a partially-branched line as a partial rather than a hit; see the
   # Coverage section of the README.
-  COVERAGE_MIN_LINE: 89
-  COVERAGE_MIN_BRANCH: 81
+  #
+  # Function coverage is deliberately not gated. The suite instantiates the
+  # client at several configurations, and each instantiation creates its own set
+  # of template functions -- so testing more configurations lowers the function
+  # percentage while raising every other one.
+  COVERAGE_MIN_LINE: 92
+  COVERAGE_MIN_BRANCH: 85
 
 jobs:
   build:
