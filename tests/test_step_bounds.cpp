@@ -123,8 +123,8 @@ int recv_calls_for_one_step(size_t budget) noexcept
     SmallClient      client{transport, clock};
 
     client.connect(options());
-    client.step();                 // transport connect, CONNECT out, CONNACK in
-    transport.recv_calls = 0;      // measure the next call, not the handshake
+    client.step();              // transport connect, CONNECT out, CONNACK in
+    transport.recv_calls = 0;   // measure the next call, not the handshake
     client.step();
     return transport.recv_calls;
 }

@@ -191,8 +191,8 @@ TEST(encoder_refuses_to_emit_a_malformed_string)
     // decoder is required to reject.
     const etl::string_view bad = view(kBadString);
 
-    CHECK(codec::publish_remaining_length(bad, 1, QoS::AtMostOnce).error()
-          == Error::InvalidArgument);
+    const Error publish_err = codec::publish_remaining_length(bad, 1, QoS::AtMostOnce).error();
+    CHECK(publish_err == Error::InvalidArgument);
 
     ConnectOptions opts;
     opts.client_id = bad;
@@ -209,13 +209,12 @@ TEST(encoder_refuses_to_emit_a_malformed_string)
     CHECK(codec::connect_remaining_length(opts).error() == Error::InvalidArgument);
 
     const TopicSubscription sub{bad, QoS::AtMostOnce};
-    CHECK(codec::subscribe_remaining_length(
-              etl::span<const TopicSubscription>(&sub, 1)).error()
-          == Error::InvalidArgument);
 
-    CHECK(codec::unsubscribe_remaining_length(
-              etl::span<const etl::string_view>(&bad, 1)).error()
-          == Error::InvalidArgument);
+    const etl::span<const TopicSubscription> subs(&sub, 1);
+    CHECK(codec::subscribe_remaining_length(subs).error() == Error::InvalidArgument);
+
+    const etl::span<const etl::string_view> filters(&bad, 1);
+    CHECK(codec::unsubscribe_remaining_length(filters).error() == Error::InvalidArgument);
 }
 
 //------------------------------------------------------------------------------
@@ -265,12 +264,12 @@ TEST(a_publish_with_a_malformed_topic_ends_the_session)
     // PUBLISH whose topic is an overlong encoding of '/'. Built by hand:
     // push_publish takes a NUL-terminated C string, and this is not one.
     static const uint8_t packet[] = {
-        0x30,               // PUBLISH, QoS 0
-        0x07,               // remaining length
-        0x00, 0x03,         // topic length 3
-        0xC0, 0xAF,         // overlong '/'
-        0x61,               // 'a'
-        0x78, 0x79,         // payload "xy"
+        0x30,         // PUBLISH, QoS 0
+        0x07,         // remaining length
+        0x00, 0x03,   // topic length 3
+        0xC0, 0xAF,   // overlong '/'
+        0x61,         // 'a'
+        0x78, 0x79,   // payload "xy"
     };
     transport.push_inbound(packet, sizeof packet);
 
@@ -300,12 +299,12 @@ TEST(a_publish_with_a_well_formed_multibyte_topic_is_delivered)
     REQUIRE(client.is_connected());
 
     static const uint8_t packet[] = {
-        0x30,               // PUBLISH, QoS 0
-        0x08,               // remaining length
-        0x00, 0x04,         // topic length 4
-        0x61, 0x2F,         // "a/"
-        0xC3, 0xA4,         // U+00E4
-        0x78, 0x79,         // payload "xy"
+        0x30,         // PUBLISH, QoS 0
+        0x08,         // remaining length
+        0x00, 0x04,   // topic length 4
+        0x61, 0x2F,   // "a/"
+        0xC3, 0xA4,   // U+00E4
+        0x78, 0x79,   // payload "xy"
     };
     transport.push_inbound(packet, sizeof packet);
 
