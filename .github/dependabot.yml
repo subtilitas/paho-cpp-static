@@ -1,0 +1,27 @@
+# Dependabot covers the GitHub Actions this repository uses. It cannot cover
+# the one dependency that actually ends up in the binary: ETL arrives through
+# CMake FetchContent, which Dependabot does not read.
+#
+# That gap is filled by .github/workflows/supply-chain.yml, which verifies the
+# pinned commit is still what its tag names and opens a tracking issue when
+# upstream moves ahead. Between them the whole dependency surface is watched --
+# which is the claim an integrator's SBOM review will actually test.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      # Matches the Conventional Commits style the rest of the history uses,
+      # so a Dependabot PR does not stand out in a changelog generated from it.
+      prefix: "ci"
+    groups:
+      # One PR for a routine version sweep rather than five. A grouped update
+      # that fails CI is also easier to bisect than five that land separately.
+      actions:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

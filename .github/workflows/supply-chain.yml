@@ -1,0 +1,191 @@
+# Watches the one third-party dependency this library has.
+#
+# CMakeLists.txt pins ETL by commit, which makes the build reproducible but
+# does nothing on its own about the two things that can go wrong afterwards.
+# This workflow covers both, and they are different in kind:
+#
+#   Integrity -- the tag moved. Someone force-pushed 20.39.4 to different
+#   content. The pin protects *this* build, but a consumer following the tag
+#   is now getting something else, and the mismatch is worth knowing about
+#   immediately. This fails the job.
+#
+#   Currency -- ETL shipped a newer release. Not urgent and not a failure;
+#   pinning is the correct default and chasing every upstream release is how
+#   a pin stops meaning anything. It opens a tracking issue instead, so the
+#   decision to move is deliberate and dated rather than forgotten.
+#
+# The distinction matters because a weekly job that goes red for a routine
+# upstream release is a job people learn to ignore, and an ignored red check
+# hides the next real one.
+
+name: Supply chain
+
+on:
+  schedule:
+    # Weekly. Upstream does not move faster than this, and neither should the
+    # decision to follow it.
+    - cron: "23 5 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - CMakeLists.txt
+      - .github/workflows/supply-chain.yml
+  pull_request:
+    paths:
+      - CMakeLists.txt
+      - .github/workflows/supply-chain.yml
+  workflow_dispatch:
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify the ETL pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read the pin
+        id: pin
+        run: |
+          set -euo pipefail
+          python3 tools/pins.py
+          {
+            echo "tag=$(python3 tools/pins.py --field etl-tag)"
+            echo "commit=$(python3 tools/pins.py --field etl-commit)"
+          } >> "$GITHUB_OUTPUT"
+
+      # The integrity check. A lightweight tag resolves straight to the
+      # commit; an annotated one resolves to a tag object, and the commit is
+      # behind the ^{} peel. Check both rather than assuming which kind
+      # upstream uses today -- that is itself something that can change.
+      - name: The pinned commit must still be what the tag names
+        run: |
+          set -euo pipefail
+          tag='${{ steps.pin.outputs.tag }}'
+          want='${{ steps.pin.outputs.commit }}'
+          remote=https://github.com/ETLCPP/etl.git
+
+          refs=$(git ls-remote "$remote" "refs/tags/$tag" "refs/tags/$tag^{}")
+          if [ -z "$refs" ]; then
+            echo "::error::tag $tag no longer exists on $remote"
+            exit 1
+          fi
+          echo "$refs"
+
+          if echo "$refs" | awk '{print $1}' | grep -qx "$want"; then
+            echo "ok: $tag still names $want"
+            exit 0
+          fi
+
+          echo "::error::ETL tag $tag no longer resolves to the pinned commit."
+          echo "pinned:  $want"
+          echo "remote:  $(echo "$refs" | awk '{print $1}' | tr '\n' ' ')"
+          echo
+          echo "The build is unaffected -- it fetches the commit, not the tag."
+          echo "But the tag has been moved, and anyone tracking it by name is"
+          echo "now getting different content. Worth understanding before the"
+          echo "pin is next advanced."
+          exit 1
+
+      - name: Look for a newer release
+        id: latest
+        run: |
+          set -euo pipefail
+          current='${{ steps.pin.outputs.tag }}'
+          latest=$(git ls-remote --tags --refs https://github.com/ETLCPP/etl.git \
+                   | awk -F'refs/tags/' '{print $2}' \
+                   | grep -E '^[0-9]+(\.[0-9]+)*$' \
+                   | sort -V | tail -1)
+
+          echo "pinned: $current   latest: $latest"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+          if [ "$current" = "$latest" ]; then
+            echo "behind=false" >> "$GITHUB_OUTPUT"
+          else
+            newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)
+            [ "$newest" = "$current" ] \
+              && echo "behind=false" >> "$GITHUB_OUTPUT" \
+              || echo "behind=true"  >> "$GITHUB_OUTPUT"
+          fi
+
+      # One issue, reused. A new issue every Monday is a mailing list, not a
+      # signal, and the second one would be the last anybody read.
+      - name: Track the gap in an issue
+        if: steps.latest.outputs.behind == 'true' && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT: ${{ steps.pin.outputs.tag }}
+          LATEST: ${{ steps.latest.outputs.latest }}
+        run: |
+          set -euo pipefail
+          title="ETL is behind: pinned $CURRENT, latest $LATEST"
+          body=$(cat <<TXT
+          The ETL pin in \`CMakeLists.txt\` is **$CURRENT**; upstream is at **$LATEST**.
+
+          This is not urgent and not a build failure. Pinning is the point, and
+          following every release would make the pin meaningless. It is here so
+          the decision to move is a decision rather than an oversight.
+
+          Before advancing it:
+
+          - read the upstream changes between the two, particularly anything
+            touching \`byte_stream\`, \`span\`, \`vector\`, \`string_view\` or
+            \`delegate\`, which is all this library uses;
+          - update both \`MQTT_ETL_TAG\` and \`MQTT_ETL_COMMIT\`, then run
+            \`tools/pins.py --check\` — the workflow cache keys have to follow;
+          - re-run the cross job. An ETL change that is harmless on x86-64 can
+            be anything but on ARMv6-M.
+
+          Closed automatically the week the pin catches up.
+          TXT
+          )
+
+          existing=$(gh issue list --state open --search "in:title ETL is behind" \
+                     --json number,title --jq '.[0].number' || true)
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --title "$title" --body "$body"
+            echo "updated issue #$existing"
+          else
+            gh issue create --title "$title" --body "$body" --label dependencies \
+              || gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Close the tracking issue once the pin catches up
+        if: steps.latest.outputs.behind == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          existing=$(gh issue list --state open --search "in:title ETL is behind" \
+                     --json number --jq '.[0].number' || true)
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Pin is current again."
+            echo "closed #$existing"
+          else
+            echo "up to date, nothing to close"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ETL"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Pinned tag | \`${{ steps.pin.outputs.tag }}\` |"
+            echo "| Pinned commit | \`${{ steps.pin.outputs.commit }}\` |"
+            echo "| Latest upstream | \`${{ steps.latest.outputs.latest }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
