@@ -45,7 +45,7 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Resolve the tag and check it against the project version
         id: meta
@@ -142,7 +142,7 @@ jobs:
           - { name: "windows-x86_64", os: windows-latest }
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 
@@ -228,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Drop the draft flag
         env:

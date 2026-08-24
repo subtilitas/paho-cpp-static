@@ -57,7 +57,7 @@ jobs:
           - { cpu: cortex-m4,     arch: "ARMv7E-M" }
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # libstdc++-arm-none-eabi-newlib is the one that is easy to miss: the
       # gcc-arm-none-eabi package alone gives a C++ compiler with no C++
