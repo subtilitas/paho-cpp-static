@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Cache the ETL checkout
         uses: actions/cache@v6
