@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -493,8 +494,83 @@ def build_api(repo: Path, out: Path, workdir: Path) -> None:
 # Memory footprint, measured rather than asserted
 # --------------------------------------------------------------------------
 
+# Everything in this section has to work when CXX is a cross compiler, which
+# rules out two habits the obvious implementation reaches for.
+#
+# We cannot *run* what we build: an arm-none-eabi object does not execute on
+# the runner. So every number is read out of an object file instead of printed
+# by a program. See PROBE below for how.
+#
+# We also cannot use the host's binutils, because `size` and `nm` built for a
+# different target will refuse the object -- silently reporting nothing, in the
+# case of `size -A`. So the tools are derived from the compiler's own name.
+
+_COMPILER_SUFFIXES = ("g++", "clang++", "c++", "gcc", "cc")
+
+
+def cxx() -> str:
+    return os.environ.get("CXX", "c++")
+
+
+def binutil(name: str) -> str:
+    """`nm` or `size` for whatever CXX targets.
+
+    `arm-none-eabi-g++` implies `arm-none-eabi-nm`. An explicit NM or SIZE in
+    the environment always wins, which is what an LLVM toolchain needs --
+    `llvm-nm` is not spelled the way `clang++` is.
+    """
+    explicit = os.environ.get(name.upper())
+    if explicit:
+        return explicit
+
+    compiler = Path(cxx()).name
+    for suffix in _COMPILER_SUFFIXES:
+        if compiler.endswith(suffix):
+            prefix = compiler[: -len(suffix)]
+            if prefix:                       # "arm-none-eabi-"
+                return prefix + name
+            break
+    return name
+
+
+def probe_flags() -> list[str]:
+    """Target flags for the probe compiles, e.g. `-mcpu=cortex-m0plus -mthumb`.
+
+    Deliberately its own variable rather than CXXFLAGS: CXXFLAGS is often
+    already populated with host flags by whatever invoked us, and inheriting
+    those into a cross measurement produces a number that is wrong in a way
+    nobody would notice.
+    """
+    return shlex.split(os.environ.get("MQTT_PROBE_CXXFLAGS", ""))
+
+
+def target_triple() -> str:
+    """What CXX actually targets. Correct when cross-compiling; `uname -m`
+    is not."""
+    return run([cxx(), "-dumpmachine"], check=False).strip() or "unknown"
+
+
+# Configuration profiles, in the order they appear in the table. The struct
+# bodies are emitted into the probe below, so this list is the single place a
+# profile is described.
+PROFILES = [
+    ("sensor", "Sensor (QoS 0 only)", "Sensor"),
+    ("defaults", "DefaultConfig", "mqtt::DefaultConfig"),
+    ("reliable", "Reliable sensor", "Reliable"),
+    ("gateway", "Gateway", "Gateway"),
+]
+
+# Measured with no execution at all.
+#
+# Each quantity becomes the length of a global array, and `nm --print-size`
+# reports that length straight out of the object file. Nothing runs, so the
+# same probe works for a Cortex-M0+ as for the host.
+#
+# The `+ 1` is because a zero-length array is ill-formed and
+# `max_inflight_out` is legitimately 0 on the sensor profile. Python subtracts
+# it back off. The arrays have no initialiser on purpose -- that keeps them in
+# .bss, so a 4 KB gateway buffer costs nothing in the object file.
 PROBE = r"""
-#include <cstdio>
 #include "mqtt/client.hpp"
 
 struct Sensor : mqtt::DefaultConfig {
@@ -527,19 +603,18 @@ struct Gateway : mqtt::DefaultConfig {
     static constexpr size_t max_topics_per_request = 8;
 };
 
-template <typename C> void row(const char* name) {
-    std::printf("| %s | %zu | %zu | %zu | %zu | **%zu** |\n", name,
-                C::rx_buffer_size, C::tx_buffer_size,
-                C::max_inflight_out, C::max_subscriptions,
-                sizeof(mqtt::Client<C>));
-}
+#define MQTT_PROFILE(tag, cfg)                                          \
+    char mqtt_probe__##tag##__size    [sizeof(mqtt::Client<cfg>) + 1];  \
+    char mqtt_probe__##tag##__rx      [cfg::rx_buffer_size      + 1];   \
+    char mqtt_probe__##tag##__tx      [cfg::tx_buffer_size      + 1];   \
+    char mqtt_probe__##tag##__inflight[cfg::max_inflight_out    + 1];   \
+    char mqtt_probe__##tag##__subs    [cfg::max_subscriptions   + 1];
 
-int main() {
-    row<Sensor>("Sensor (QoS 0 only)");
-    row<mqtt::DefaultConfig>("DefaultConfig");
-    row<Reliable>("Reliable sensor");
-    row<Gateway>("Gateway");
-    return 0;
+extern "C" {
+MQTT_PROFILE(sensor,   Sensor)
+MQTT_PROFILE(defaults, mqtt::DefaultConfig)
+MQTT_PROFILE(reliable, Reliable)
+MQTT_PROFILE(gateway,  Gateway)
 }
 """
 
@@ -552,8 +627,7 @@ Every buffer and table in the client is sized from its `Config` type, so
 behind a pointer. The numbers below are **measured on every push**, not written
 down once and left to rot.
 
-Measured with `{compiler}` on `{machine}`. Treat them as indicative for a
-Cortex-M rather than a promise; the relative shape is what transfers.
+{provenance}
 
 ## RAM: `sizeof(Client<Cfg>)`
 
@@ -622,64 +696,137 @@ def find_etl_include(repo: Path, explicit: str | None) -> Path | None:
     return None
 
 
+def section_bytes(size_output: str) -> int:
+    """`.text` plus `.rodata` from `size -A`.
+
+    -ffunction-sections names every section `.text._ZN...` rather than plain
+    `.text`, so this matches on the prefix. Comparing for equality silently
+    measures zero, which is the failure mode the callers check for.
+    """
+    total = 0
+    for line in size_output.splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[0].startswith((".text", ".rodata")):
+            try:
+                total += int(fields[1])
+            except ValueError:
+                pass
+    return total
+
+
+def compile_probe(src: Path, obj: Path, repo: Path, etl_include: Path, opt: str) -> None:
+    run([
+        cxx(), "-std=c++17", opt, "-fno-exceptions", "-fno-rtti",
+        "-ffunction-sections", "-fdata-sections",
+        *probe_flags(),
+        f"-I{repo / 'include'}", "-isystem", str(etl_include),
+        "-c", str(src), "-o", str(obj),
+    ])
+
+
+def read_probe(obj: Path) -> dict[str, int]:
+    """Read the measured quantities back out of an object file.
+
+    Every array the probe defines carries its measurement in nm's size
+    column. Decimal radix is requested explicitly so the parse does not
+    depend on nm's default, which is hexadecimal.
+    """
+    nm = binutil("nm")
+    out = run([nm, "--print-size", "--defined-only", "-t", "d", str(obj)])
+
+    values: dict[str, int] = {}
+    for line in out.splitlines():
+        fields = line.split()
+        if len(fields) < 4:
+            continue                     # a defined symbol nm could not size
+        name = fields[-1]
+        if name.startswith("mqtt_probe__"):
+            try:
+                values[name] = int(fields[1]) - 1      # undo the +1 in PROBE
+            except ValueError:
+                pass
+
+    if not values:
+        raise RuntimeError(
+            f"{nm} found no mqtt_probe__* symbols in {obj.name}. Either the "
+            f"probe did not define them, or nm is built for a different "
+            f"target than {cxx()}. Output was:\n{out}"
+        )
+    return values
+
+
 def build_footprint(repo: Path, out: Path, workdir: Path, etl_include: Path | None) -> None:
     if etl_include is None or not etl_include.exists():
         print("  Memory-Footprint.md skipped (no ETL include path)")
         return
 
+    # ---- RAM: sizeof(Client<Cfg>) and the knobs that produced it ----------
     probe = workdir / "probe.cpp"
     probe.write_text(PROBE, encoding="utf-8")
-    binary = workdir / "probe"
+    probe_obj = workdir / "probe.o"
+    compile_probe(probe, probe_obj, repo, etl_include, "-O2")
+    measured = read_probe(probe_obj)
 
-    run([
-        os.environ.get("CXX", "c++"), "-std=c++17", "-O2",
-        "-fno-exceptions", "-fno-rtti",
-        f"-I{repo / 'include'}", "-isystem", str(etl_include),
-        str(probe), "-o", str(binary),
-    ])
-    table = run([str(binary)])
+    def field(tag: str, name: str) -> int:
+        key = f"mqtt_probe__{tag}__{name}"
+        if key not in measured:
+            raise RuntimeError(f"probe did not define {key}")
+        return measured[key]
 
-    # Object sizes for the non-template core.
+    table = "\n".join(
+        f"| {label} | {field(tag, 'rx')} | {field(tag, 'tx')} "
+        f"| {field(tag, 'inflight')} | {field(tag, 'subs')} "
+        f"| **{field(tag, 'size')}** |"
+        for tag, label, _cfg in PROFILES
+    )
+
+    # ---- Flash: object sizes for the non-template core --------------------
+    size_tool = binutil("size")
     sizes = []
     for src in sorted((repo / "src").glob("*.cpp")):
         obj = workdir / (src.stem + ".o")
-        run([
-            os.environ.get("CXX", "c++"), "-std=c++17", "-Os",
-            "-fno-exceptions", "-fno-rtti", "-ffunction-sections", "-fdata-sections",
-            f"-I{repo / 'include'}", "-isystem", str(etl_include),
-            "-c", str(src), "-o", str(obj),
-        ])
-        out_txt = run(["size", "-A", str(obj)])
-        text = 0
-        for line in out_txt.splitlines():
-            fields = line.split()
-            # -ffunction-sections names every section ".text._ZN..." rather than
-            # plain ".text", so this has to match on the prefix. Comparing for
-            # equality silently measures zero.
-            if len(fields) >= 2 and fields[0].startswith((".text", ".rodata")):
-                try:
-                    text += int(fields[1])
-                except ValueError:
-                    pass
-        sizes.append((src.name, text))
+        compile_probe(src, obj, repo, etl_include, "-Os")
+        size_output = run([size_tool, "-A", str(obj)])
+        text = section_bytes(size_output)
         if text == 0:
             raise RuntimeError(
-                f"measured 0 bytes of code in {src.name}; the `size -A` output "
-                f"was not understood:\n{out_txt}"
+                f"measured 0 bytes of code in {src.name}; the `{size_tool} -A` "
+                f"output was not understood:\n{size_output}"
             )
+        sizes.append((src.name, text))
 
-    compiler = run([os.environ.get("CXX", "c++"), "--version"]).splitlines()[0]
-    machine = run(["uname", "-m"]).strip()
+    # ---- Provenance -------------------------------------------------------
+    compiler = run([cxx(), "--version"]).splitlines()[0]
+    triple = target_triple()
+    flags = probe_flags()
+
+    provenance = f"Measured with `{compiler}` targeting `{triple}`"
+    if flags:
+        provenance += f", `{' '.join(flags)}`"
+    provenance += ".\n\n"
+
+    # A bare-metal triple means these are the target's own numbers. Anything
+    # else is a host build, and saying so is the difference between a measured
+    # figure and one that merely looks like one.
+    if "eabi" in triple or triple.startswith(("arm", "thumb", "aarch64", "riscv")):
+        provenance += (
+            "These are the target's own figures, read out of the object files "
+            "rather than printed by a program -- nothing was executed to "
+            "produce them."
+        )
+    else:
+        provenance += (
+            "This is a **host** build. Treat the numbers as indicative for a "
+            "Cortex-M rather than a promise; the relative shape is what "
+            "transfers. Where a cross-compiled table exists for the same "
+            "commit, that one is the number to trust."
+        )
 
     # Note: the template is deliberately not indented and does not go through
     # textwrap.dedent. dedent computes a common leading-whitespace prefix across
     # every line, and an interpolated multi-line value (the table) has none --
     # so dedent silently gives up and the whole page renders as a code block.
-    page = FOOTPRINT_TEMPLATE.format(
-        compiler=compiler,
-        machine=machine,
-        table=table.strip(),
-    )
+    page = FOOTPRINT_TEMPLATE.format(provenance=provenance, table=table)
 
     for name, size in sizes:
         page += f"| `{name}` | {size} |\n"
@@ -690,25 +837,13 @@ def build_footprint(repo: Path, out: Path, workdir: Path, etl_include: Path | No
     inst_src = workdir / "inst.cpp"
     inst_src.write_text(INSTANTIATION_PROBE, encoding="utf-8")
     inst_obj = workdir / "inst.o"
-    run([
-        os.environ.get("CXX", "c++"), "-std=c++17", "-Os",
-        "-fno-exceptions", "-fno-rtti", "-ffunction-sections", "-fdata-sections",
-        f"-I{repo / 'include'}", "-isystem", str(etl_include),
-        "-c", str(inst_src), "-o", str(inst_obj),
-    ])
-    inst_bytes = 0
-    for line in run(["size", "-A", str(inst_obj)]).splitlines():
-        fields = line.split()
-        if len(fields) >= 2 and fields[0].startswith((".text", ".rodata")):
-            try:
-                inst_bytes += int(fields[1])
-            except ValueError:
-                pass
+    compile_probe(inst_src, inst_obj, repo, etl_include, "-Os")
+    inst_bytes = section_bytes(run([size_tool, "-A", str(inst_obj)]))
 
     page += FOOTPRINT_TAIL.format(instantiation=inst_bytes)
 
     out.joinpath("Memory-Footprint.md").write_text(page, encoding="utf-8")
-    print(f"  Memory-Footprint.md ({len(sizes)} objects measured)")
+    print(f"  Memory-Footprint.md ({len(sizes)} objects, {triple})")
 
 
 # --------------------------------------------------------------------------
@@ -840,6 +975,11 @@ def main() -> int:
     parser.add_argument("--etl-include", default=None)
     parser.add_argument("--test-binary", default=None)
     parser.add_argument("--skip-api", action="store_true")
+    parser.add_argument("--footprint-only", action="store_true",
+                        help="emit only Memory-Footprint.md. Used by the "
+                             "cross-compile job, which has a target "
+                             "compiler but no Doxygen and no runnable "
+                             "test binary.")
     args = parser.parse_args()
 
     repo = Path(args.repo).resolve()
@@ -851,11 +991,11 @@ def main() -> int:
     sha = args.sha or run(["git", "rev-parse", "HEAD"], cwd=repo).strip()
 
     print(f"building wiki from {repo} -> {out}")
-    present = build_prose(repo, out, args.repo_slug, args.ref)
+    present = [] if args.footprint_only else build_prose(repo, out, args.repo_slug, args.ref)
 
     with tempfile.TemporaryDirectory() as tmp:
         workdir = Path(tmp)
-        if not args.skip_api:
+        if not args.skip_api and not args.footprint_only:
             try:
                 build_api(repo, out, workdir)
             except Exception as exc:                      # noqa: BLE001
@@ -868,9 +1008,10 @@ def main() -> int:
             print(f"  Memory-Footprint.md FAILED: {exc}", file=sys.stderr)
             return 1
 
-    build_tests(repo, out,
-                Path(args.test_binary) if args.test_binary else None)
-    build_nav(out, present, args.repo_slug, sha)
+    if not args.footprint_only:
+        build_tests(repo, out,
+                    Path(args.test_binary) if args.test_binary else None)
+        build_nav(out, present, args.repo_slug, sha)
 
     pages = sorted(p.name for p in out.glob("*.md"))
     print(f"\n{len(pages)} pages: {', '.join(pages)}")
