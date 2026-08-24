@@ -11,6 +11,7 @@ option(MQTT_NO_EXCEPTIONS  "Compile with -fno-exceptions"   ON)
 option(MQTT_NO_RTTI        "Compile with -fno-rtti"         ON)
 option(MQTT_WERROR         "Treat warnings as errors"       OFF)
 option(MQTT_COVERAGE       "Instrument for gcov/llvm-cov"   OFF)
+option(MQTT_STACK_USAGE    "Emit GCC .su stack-usage reports" OFF)
 
 set(MQTT_ETL_DIR "" CACHE PATH
     "Path to an Embedded Template Library checkout. If empty, ETL is fetched.")
@@ -185,6 +186,16 @@ if(NOT MSVC)
 
     if(MQTT_WERROR)
         target_compile_options(paho_cpp_static PRIVATE -Werror)
+    endif()
+
+    # One .su file per translation unit, listing each function's frame size and
+    # whether it is static, bounded or dynamic. "dynamic" would mean a VLA or
+    # alloca -- an unbounded stack demand, which this library must not have --
+    # so CI reads these and fails on one. With no recursion anywhere on the
+    # protocol path, the sum of all frames is then a hard upper bound on what
+    # the library can ask of the stack.
+    if(MQTT_STACK_USAGE)
+        target_compile_options(paho_cpp_static PRIVATE -fstack-usage)
     endif()
 else()
     # /EHsc was already stripped from CMAKE_CXX_FLAGS above; this stops the

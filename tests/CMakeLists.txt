@@ -12,6 +12,7 @@ add_executable(mqtt_tests
     test_tx_queue.cpp
     test_encode_bounds.cpp
     test_config_profiles.cpp
+    test_step_bounds.cpp
     test_no_alloc.cpp)
 
 target_link_libraries(mqtt_tests PRIVATE paho_cpp_static)

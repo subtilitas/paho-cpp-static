@@ -101,7 +101,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DMQTT_WERROR=ON \
             -DMQTT_BUILD_TESTS=OFF \
-            -DMQTT_BUILD_EXAMPLES=OFF
+            -DMQTT_BUILD_EXAMPLES=OFF \
+            -DMQTT_STACK_USAGE=ON
 
       - name: Build
         run: cmake --build build --parallel
@@ -127,6 +128,68 @@ jobs:
             exit 1
           fi
           echo "no undefined allocation or exception symbols"
+
+      # The other half of "bounded". Flash and RAM are published already; what
+      # a real-time reviewer actually asks is whether step() can run away, and
+      # how much stack it needs to not.
+      #
+      # A "dynamic" frame means a VLA or alloca, and therefore a stack demand
+      # nobody can size in advance. There are none, and this fails if one
+      # appears. Given that and the absence of recursion on the protocol path,
+      # the sum of every frame is a hard -- if loose -- upper bound: no call
+      # path can use more than all of them at once.
+      - name: Stack usage
+        run: |
+          set -euo pipefail
+
+          find build -name '*.su' -exec cat {} + | sed '/^$/d' | sort > stack-usage.txt
+          if [ ! -s stack-usage.txt ]; then
+            echo "::error::no .su files produced; -fstack-usage did not take effect"
+            exit 1
+          fi
+
+          if grep -q 'dynamic' stack-usage.txt; then
+            echo "::error::a function has a dynamically sized stack frame:"
+            grep 'dynamic' stack-usage.txt
+            exit 1
+          fi
+
+          # Columns are  name:line:col <TAB> bytes <TAB> qualifier
+          worst=$(awk -F'\t' '{print $2}' stack-usage.txt | sort -n | tail -1)
+          total=$(awk -F'\t' '{s += $2} END {print s+0}' stack-usage.txt)
+          count=$(wc -l < stack-usage.txt)
+
+          {
+            echo "### Stack, ${{ matrix.cpu }}"
+            echo
+            echo "| | Bytes |"
+            echo "|---|---|"
+            echo "| Largest single frame | $worst |"
+            echo "| Sum of all $count frames | $total |"
+            echo
+            echo "No dynamically sized frames, and no recursion on the protocol"
+            echo "path, so the sum is a hard upper bound on the library's own"
+            echo "stack demand. It is a loose one -- no real call path reaches"
+            echo "every function at once -- and it excludes whatever the"
+            echo "\`Transport\` implementation needs beneath it."
+            echo
+            echo "<details><summary>Every frame</summary>"
+            echo
+            echo '```'
+            sort -t$'\t' -k2 -n -r stack-usage.txt
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "largest frame $worst bytes; $count frames totalling $total"
+
+      - name: Upload the stack-usage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stack-usage-${{ matrix.cpu }}
+          path: stack-usage.txt
 
       - name: Measure the footprint on this target
         env:

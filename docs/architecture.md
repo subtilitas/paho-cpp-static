@@ -127,6 +127,63 @@ been passed to your `on_disconnect` handler. Back-pressure — a transport that
 will not accept bytes — is *not* an error; the data stays queued and `step()`
 returns `Ok`.
 
+## Why `step()` always returns
+
+The memory guarantees get the attention, but on a device with a watchdog the
+question that decides whether this library is usable is a different one: if I
+call `step()` between two other jobs, do I get control back, and when.
+
+Four things make the answer yes, and all four are structural rather than
+careful:
+
+**The receive path has a round budget.** `pump_rx()` will call
+`Transport::recv()` at most `kMaxRecvRoundsPerStep` times before returning,
+however much the peer has queued. A broker that always has another packet ready
+gets eight buffers' worth of attention per step and no more; the rest waits for
+the next call. This is the only place in the client where the peer could
+otherwise set the pace.
+
+**The drain loop cannot spin.** `drain_rx()` is written `for (;;)`, which looks
+like the opposite of a guarantee, but every path through the body either
+returns or consumes at least one whole packet and shifts the remainder down.
+The buffer strictly shrinks, so the loop is bounded by how many packets fit in
+`rx_buffer_size` — a compile-time number.
+
+**There is no recursion.** Nothing on the protocol path calls itself, directly
+or through the packet dispatcher: `handle_packet()` fans out to handlers that
+return. `topic_matches()` is iterative for the same reason, and says so. Stack
+depth is therefore a property of the call graph, not of the input.
+
+**There is nothing to block on.** No allocation, so no allocator to wait for.
+No locks, so no contention and no priority inversion. No syscalls, because the
+transport is yours and is required never to block. `step()` can be slow only in
+proportion to work it actually did.
+
+Taken together the cost of a step is a function of the configuration you chose,
+not of the peer's behaviour — which is the same claim `sizeof(Client<Cfg>)`
+makes about memory, applied to time.
+
+### What is measured, and what is not
+
+The cross-compile job builds with `-fstack-usage` and reads GCC's per-function
+frame sizes back out. It **fails** if any frame is dynamically sized, which
+would mean a VLA or `alloca` and an unbounded stack demand. Since there is none,
+and since nothing recurses, the sum of every frame is a hard upper bound on
+what the library can ask of the stack. It is a loose bound — no real call path
+reaches every function at once — but it is a bound, and it is published per
+target rather than asserted.
+
+Two honest limits. It does not include whatever your `Transport` needs beneath
+it, which on a TLS stack will dwarf this. And a *worst-case execution time* in
+cycles is a different exercise needing a call-graph tool and a target model;
+what is claimed here is termination and a bound on work, not a number of
+microseconds.
+
+`tests/test_step_bounds.cpp` holds the behavioural half: a broker that never
+stops talking, and the assertion that the work done per `step()` does not grow
+with how much it has queued.
+
+
 ## Buffers
 
 **Receive** is a single linear buffer. Bytes accumulate at the tail; complete

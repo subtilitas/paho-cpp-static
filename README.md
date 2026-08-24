@@ -19,15 +19,25 @@ run time.
   returns an `mqtt::Error`.
 - **No OS dependency.** No threads, no mutexes, no sockets, no `<chrono>`. You
   implement two small interfaces; the client never blocks.
+- **`step()` returns.** One call does a bounded amount of work no matter what
+  the peer sends: the receive path caps its `recv()` calls per step, the drain
+  loop strictly shrinks its buffer each pass, and there is no recursion
+  anywhere on the protocol path. With no allocation to block on and no lock to
+  contend, `step()` has a computable worst case rather than a hopeful one —
+  which is the property that lets it sit in a superloop next to a watchdog.
+  CI measures the stack on the target and fails on a dynamically sized frame.
 - **C++ throughout**, so there is no C wrapper to write and no `void*` context
   pointers to keep alive.
 - **Serialization on the [Embedded Template Library](https://www.etlcpp.com/)**,
   using `etl::byte_stream_writer` / `etl::byte_stream_reader`, which report
   overruns as `bool` / `etl::optional` rather than throwing.
 
-Roughly 2 400 lines of library, and about 1 KB of RAM at the small end. Flash
-and RAM figures are measured on every push — see
-[Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint).
+Roughly 2 400 lines of library, and about 1 KB of RAM at the small end. Flash,
+RAM and stack are measured on every push — on the host, and cross-compiled for
+Cortex-M0+ and Cortex-M4 — see
+[Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint)
+and the [Cross-compile](https://github.com/subtilitas/paho-cpp-static/actions/workflows/cross.yml)
+job summaries.
 
 ---
 
