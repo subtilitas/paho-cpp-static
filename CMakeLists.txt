@@ -119,8 +119,17 @@ target_compile_features(paho_cpp_static PUBLIC cxx_std_17)
 
 set_target_properties(paho_cpp_static PROPERTIES
     CXX_EXTENSIONS OFF
-    POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME client)
+
+# PIC so a hosted consumer can link this archive into a shared object. Not on a
+# bare-metal target: there are no shared objects there, and -fPIC means
+# GOT-relative code needing runtime support that nothing will provide. The
+# toolchain file cannot switch this off from outside, because a property set
+# explicitly on a target beats CMAKE_POSITION_INDEPENDENT_CODE -- so the
+# condition has to live here.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Generic")
+    set_target_properties(paho_cpp_static PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # The whole point of the rewrite: it has to build clean without exceptions,
 # without RTTI, and without the compiler quietly inserting either back.

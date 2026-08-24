@@ -1,0 +1,147 @@
+# Builds the library for the hardware it was written for, and measures it there.
+#
+# Everything else in CI runs on x86-64. That is fine for correctness -- the
+# state machine does not care what it runs on -- but it is not fine for the
+# claims this project leads with. "About 1 KB of RAM at the small end" and
+# "roughly 6.9 KB of flash" were host figures, published with an honest caveat
+# that they were indicative for a Cortex-M rather than measured on one.
+#
+# This job removes the caveat. It does two separate things:
+#
+#   1. Compiles the static library for a bare-metal target under -Werror, which
+#      is the only way to find out whether the code is actually portable to one.
+#      A -Wconversion diagnostic that never fires on a 64-bit host will fire on
+#      a 32-bit target with a 16-bit int promotion.
+#
+#   2. Measures sizeof(Client<Cfg>) and the per-object flash cost *for that
+#      target*, by reading them out of the object files. Nothing is executed --
+#      see tools/build_wiki.py for how, and why that was the only option.
+#
+# Two CPUs, chosen as the ends of the range rather than a sample: Cortex-M0+ is
+# ARMv6-M, Thumb-only, no hardware divide, and is the part where the footprint
+# actually hurts. Cortex-M4 is ARMv7E-M and is what most of the industry ships.
+# If it builds clean for both, the ones in between are not going to surprise.
+
+name: Cross-compile
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cross-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Keep in step with the GIT_TAG in CMakeLists.txt.
+  ETL_TAG: 20.39.4
+
+jobs:
+  build:
+    name: ${{ matrix.cpu }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cpu: cortex-m0plus, arch: "ARMv6-M" }
+          - { cpu: cortex-m4,     arch: "ARMv7E-M" }
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # libstdc++-arm-none-eabi-newlib is the one that is easy to miss: the
+      # gcc-arm-none-eabi package alone gives a C++ compiler with no C++
+      # standard headers, and the failure looks like the source is broken
+      # rather than the toolchain being incomplete.
+      - name: Install the ARM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi \
+            libstdc++-arm-none-eabi-newlib
+          arm-none-eabi-g++ --version | head -1
+          arm-none-eabi-g++ -dumpmachine
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-cross-${{ matrix.cpu }}-${{ env.ETL_TAG }}
+
+      # Tests and examples are host programs -- they print, they open sockets,
+      # they have a main(). Only the library cross-compiles, and the library is
+      # the deliverable.
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-arm-none-eabi.cmake \
+            -DMQTT_TARGET_CPU=${{ matrix.cpu }} \
+            -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DMQTT_WERROR=ON \
+            -DMQTT_BUILD_TESTS=OFF \
+            -DMQTT_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # Proves the archive holds real target code, and re-checks the promise
+      # the host build already makes: no heap, no exception machinery. On a
+      # bare-metal target this matters more than on the host, because there may
+      # be no malloc linked at all -- an undefined reference here would only
+      # surface in someone's final link, months later.
+      - name: Verify the archive
+        run: |
+          set -euo pipefail
+          lib=build/libpaho_cpp_static.a
+          arm-none-eabi-size -t "$lib"
+          echo
+
+          undefined=$(arm-none-eabi-nm --undefined-only "$lib" \
+            | grep -oE '\b(malloc|free|realloc|calloc|_Znwm|_Znaj|_Znwj|__cxa_throw|_Unwind_Resume|__cxa_allocate_exception)\b' \
+            | sort -u || true)
+          if [ -n "$undefined" ]; then
+            echo "the target archive references machinery it promises not to use:"
+            echo "$undefined"
+            exit 1
+          fi
+          echo "no undefined allocation or exception symbols"
+
+      - name: Measure the footprint on this target
+        env:
+          CXX: arm-none-eabi-g++
+          MQTT_PROBE_CXXFLAGS: -mcpu=${{ matrix.cpu }} -mthumb
+        run: |
+          python3 tools/build_wiki.py \
+            --out footprint-${{ matrix.cpu }} \
+            --footprint-only \
+            --etl-include build/_deps/etl-src/include
+
+      # Put the numbers where they can be read without downloading anything.
+      # This is the whole point of the job, so it should not be one click away.
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## ${{ matrix.cpu }} (${{ matrix.arch }})"
+            echo
+            cat footprint-${{ matrix.cpu }}/Memory-Footprint.md 2>/dev/null \
+              || echo "_measurement did not produce a page_"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Kept as an artefact so the wiki job can eventually publish a table per
+      # target instead of the host's. That is the follow-up; this job first has
+      # to prove the numbers are stable across a few runs.
+      - name: Upload the measured page
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: footprint-${{ matrix.cpu }}
+          path: footprint-${{ matrix.cpu }}
