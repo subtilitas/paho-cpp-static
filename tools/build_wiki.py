@@ -505,7 +505,10 @@ def build_api(repo: Path, out: Path, workdir: Path) -> None:
 # different target will refuse the object -- silently reporting nothing, in the
 # case of `size -A`. So the tools are derived from the compiler's own name.
 
-_COMPILER_SUFFIXES = ("g++", "clang++", "c++", "gcc", "cc")
+# Longest first. "clang++" ends with "g++", so testing in any other order
+# strips the wrong suffix and asks for "clannm".
+_COMPILER_SUFFIXES = tuple(
+    sorted(("g++", "clang++", "c++", "gcc", "cc"), key=len, reverse=True))
 
 
 def cxx() -> str:

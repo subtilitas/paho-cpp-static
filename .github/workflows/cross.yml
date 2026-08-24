@@ -70,6 +70,17 @@ jobs:
           arm-none-eabi-g++ --version | head -1
           arm-none-eabi-g++ -dumpmachine
 
+      # Run against the *target* toolchain, not the host's. The round-trip
+      # case compiles the array trick with whatever CXX is and reads the
+      # numbers back, so here it proves the measurement mechanism on
+      # arm-none-eabi -- the one place it has to work and the one place it
+      # cannot be checked by running the result.
+      - name: Test the measurement logic
+        env:
+          CXX: arm-none-eabi-g++
+          MQTT_PROBE_CXXFLAGS: -mcpu=${{ matrix.cpu }} -mthumb
+        run: python3 -m unittest discover -s tools -p 'test_*.py' -v
+
       - name: Cache the ETL checkout
         uses: actions/cache@v6
         with:
