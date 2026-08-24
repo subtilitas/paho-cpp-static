@@ -2,11 +2,18 @@
 
 #include "mqtt/topic.hpp"
 
+#include "mqtt/utf8.hpp"
+
 namespace mqtt {
 
 bool is_valid_topic_name(etl::string_view name) noexcept
 {
     if (name.empty() || name.size() > 65535u)
+        return false;
+
+    // MQTT-1.5.3-1. A topic name is an MQTT UTF-8 encoded string before it is
+    // anything else, so a name that is not well-formed is not a name.
+    if (!is_valid_mqtt_string(name))
         return false;
 
     for (const char c : name)
@@ -20,6 +27,9 @@ bool is_valid_topic_name(etl::string_view name) noexcept
 bool is_valid_filter(etl::string_view filter) noexcept
 {
     if (filter.empty() || filter.size() > 65535u)
+        return false;
+
+    if (!is_valid_mqtt_string(filter))
         return false;
 
     size_t level_start = 0;

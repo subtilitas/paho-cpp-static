@@ -4,6 +4,8 @@
 
 #include <etl/byte_stream.h>
 
+#include "mqtt/utf8.hpp"
+
 namespace mqtt {
 namespace codec {
 namespace {
@@ -99,7 +101,16 @@ Result<etl::string_view> read_string(etl::byte_stream_reader& r) noexcept
     if (!data.has_value())
         return Error::MalformedPacket;
 
-    return etl::string_view(data.value().data(), len);
+    const etl::string_view s(data.value().data(), len);
+
+    // MQTT-1.5.3-1: a receiver that finds a malformed UTF-8 string must close
+    // the connection, which is what MalformedPacket does. This is the check
+    // that keeps the application from being handed bytes it will treat as
+    // text -- everything else here is about not *emitting* nonsense.
+    if (!is_valid_mqtt_string(s))
+        return Error::MalformedPacket;
+
+    return s;
 }
 
 //------------------------------------------------------------------------------
@@ -110,6 +121,8 @@ Result<uint32_t> connect_remaining_length(const ConnectOptions& opts) noexcept
 {
     if (opts.client_id.size() > kMaxStringLen)
         return Error::InvalidArgument;
+    if (!is_valid_mqtt_string(opts.client_id))
+        return Error::InvalidArgument;   // MQTT-1.5.3-1
 
     // Variable header: protocol name ("MQTT") + level + flags + keep alive.
     uint32_t total = 0;
@@ -126,6 +139,10 @@ Result<uint32_t> connect_remaining_length(const ConnectOptions& opts) noexcept
             return Error::InvalidArgument;   // MQTT-3.1.2-14
         if (opts.will.topic.size() > kMaxStringLen || opts.will.payload.size() > kMaxStringLen)
             return Error::InvalidArgument;
+        // The will *topic* is a UTF-8 string; the will *payload* is arbitrary
+        // bytes and is deliberately not checked.
+        if (!is_valid_mqtt_string(opts.will.topic))
+            return Error::InvalidArgument;
         if (!checked_add(total, utf8_size(opts.will.topic.size())) ||
             !checked_add(total, utf8_size(opts.will.payload.size())))
             return Error::InvalidArgument;
@@ -134,6 +151,10 @@ Result<uint32_t> connect_remaining_length(const ConnectOptions& opts) noexcept
     if (!opts.username.empty())
     {
         if (opts.username.size() > kMaxStringLen)
+            return Error::InvalidArgument;
+        // The password is a binary field per the spec, so only the username
+        // is checked here.
+        if (!is_valid_mqtt_string(opts.username))
             return Error::InvalidArgument;
         if (!checked_add(total, utf8_size(opts.username.size())))
             return Error::InvalidArgument;
@@ -161,6 +182,9 @@ Result<uint32_t> publish_remaining_length(etl::string_view topic, size_t payload
     if (!valid_qos(qos))
         return Error::InvalidArgument;
 
+    if (!is_valid_mqtt_string(topic))
+        return Error::InvalidArgument;   // MQTT-1.5.3-1
+
     uint32_t total = 0;
     if (!checked_add(total, utf8_size(topic.size())))
         return Error::InvalidArgument;
@@ -187,6 +211,8 @@ Result<uint32_t> subscribe_remaining_length(etl::span<const TopicSubscription> s
     {
         if (s.filter.empty() || s.filter.size() > kMaxStringLen)
             return Error::InvalidArgument;
+        if (!is_valid_mqtt_string(s.filter))
+            return Error::InvalidArgument;
         if (!valid_qos(s.qos))
             return Error::InvalidArgument;                          // MQTT-3-8.3-4
         if (!checked_add(total, utf8_size(s.filter.size()) + 1u))   // +1 requested QoS
@@ -205,6 +231,8 @@ unsubscribe_remaining_length(etl::span<const etl::string_view> filters) noexcept
     for (const etl::string_view& f : filters)
     {
         if (f.empty() || f.size() > kMaxStringLen)
+            return Error::InvalidArgument;
+        if (!is_valid_mqtt_string(f))
             return Error::InvalidArgument;
         if (!checked_add(total, utf8_size(f.size())))
             return Error::InvalidArgument;

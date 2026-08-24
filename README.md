@@ -174,8 +174,9 @@ guidance and worked examples for sensor, reliable-sensor and gateway profiles.
 Implemented: CONNECT/CONNACK with will and credentials, PUBLISH at QoS 0/1/2 in
 both directions with full acknowledgement handshakes and DUP retransmission,
 SUBSCRIBE/SUBACK, UNSUBSCRIBE/UNSUBACK, PINGREQ/PINGRESP keep-alive, DISCONNECT,
-topic wildcard matching, and automatic re-subscription after a session the
-broker did not retain.
+topic wildcard matching, UTF-8 validation of every string field in both
+directions (§1.5.3, overlong encodings and surrogates included), and automatic
+re-subscription after a session the broker did not retain.
 
 Deliberately absent: MQTT 5.0 properties, WebSocket transport, HTTP/SOCKS
 proxying, on-disk persistence, MQTT 3.1 (protocol level 3), and automatic

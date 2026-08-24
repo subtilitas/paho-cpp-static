@@ -7,6 +7,7 @@ add_executable(mqtt_tests
     test_packet.cpp
     test_codec.cpp
     test_topic.cpp
+    test_utf8.cpp
     test_client.cpp
     test_to_string.cpp
     test_tx_queue.cpp

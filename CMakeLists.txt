@@ -132,6 +132,7 @@ add_library(paho_cpp_static STATIC
     src/packet.cpp
     src/codec.cpp
     src/topic.cpp
+    src/utf8.cpp
     src/client.cpp)
 add_library(mqtt::client ALIAS paho_cpp_static)
 

@@ -271,7 +271,42 @@ The codec rejects, as protocol errors, several things Paho tolerates:
 | Reserved bits set in CONNACK flags | forbidden by §3.2.2.1 |
 | Packet id 0 where one is required | forbidden by §2.3.1 |
 | Server sending CONNECT/SUBSCRIBE/PINGREQ/DISCONNECT | client-to-server only |
+| Malformed UTF-8 in any string field | forbidden by §1.5.3; see below |
 
 On a device that has to stay up unattended, failing loudly on a desynchronised
 stream and reconnecting beats guessing at what the peer meant and delivering
 corrupted messages to the application.
+
+### UTF-8
+
+MQTT strings are UTF-8 (§1.5.3), and `is_valid_mqtt_string()` in `utf8.cpp`
+enforces it on both sides: a malformed inbound string is `MalformedPacket` and
+ends the session, as the spec requires of a receiver, and the encoder refuses
+to emit one for the same reason it refuses `DUP` at QoS 0 — those entry points
+are documented as API and must not build a packet the peer is obliged to
+reject.
+
+What that rules out, beyond the obvious truncated and stray bytes: the
+five- and six-byte forms RFC 3629 removed, code points above U+10FFFF, the
+UTF-16 surrogate halves, U+0000 (§1.5.3-2 — well-formed UTF-8 and still
+forbidden), and **overlong encodings**.
+
+The overlongs are the ones that matter. An overlong lets one value be spelled
+in more bytes than it needs, so `sport/+` and an overlong rendering of the same
+characters are different byte strings naming the same topic. A broker whose
+access control matches on bytes and a client that decodes to characters then
+disagree about which topic is under discussion, and the disagreement is
+attacker-chosen. This is the same reasoning that makes `vbi_decode` reject
+non-minimal variable byte integers, applied one layer up.
+
+Two things are deliberately allowed. **U+FEFF** — §1.5.3-3 says a receiver must
+not skip or strip a byte order mark, so it has to accept one. And **control
+characters**, which the spec only says a sender *should not* include; rejecting
+on a SHOULD would drop traffic a conforming peer is entitled to send.
+
+There is no option to switch this off. It costs a few hundred bytes of flash —
+`utf8.cpp` has its own row in the
+[Memory footprint](Memory-Footprint) table, so the number is measured per
+target rather than argued about — and a configuration switch whose wrong
+setting produces a silently non-conformant client is worth more than that in
+documentation, test matrix and support.
