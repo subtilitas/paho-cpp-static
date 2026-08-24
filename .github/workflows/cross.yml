@@ -38,8 +38,11 @@ permissions:
   contents: read
 
 env:
-  # Keep in step with the GIT_TAG in CMakeLists.txt.
-  ETL_TAG: 20.39.4
+  # The ETL commit CMakeLists.txt pins. Not a tag: a tag can be moved,
+  # and a cache key that only names one would keep serving a stale
+  # checkout of the previous content. tools/pins.py --check enforces
+  # that this matches, and supply-chain.yml watches the tag itself.
+  ETL_COMMIT: 081e920302e4062dbd122fc3c86255825ccaa666
 
 jobs:
   build:
@@ -85,7 +88,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: etl-cross-${{ matrix.cpu }}-${{ env.ETL_TAG }}
+          key: etl-cross-${{ matrix.cpu }}-${{ env.ETL_COMMIT }}
 
       # Tests and examples are host programs -- they print, they open sockets,
       # they have a main(). Only the library cross-compiles, and the library is

@@ -15,6 +15,14 @@ option(MQTT_COVERAGE       "Instrument for gcov/llvm-cov"   OFF)
 set(MQTT_ETL_DIR "" CACHE PATH
     "Path to an Embedded Template Library checkout. If empty, ETL is fetched.")
 
+# The dependency pin, in one place. tools/pins.py reads these and checks that
+# every workflow cache key agrees, so the version cannot drift between here and
+# CI without the build saying so.
+set(MQTT_ETL_TAG "20.39.4" CACHE STRING
+    "ETL release that MQTT_ETL_COMMIT corresponds to. Documentation for humans.")
+set(MQTT_ETL_COMMIT "081e920302e4062dbd122fc3c86255825ccaa666" CACHE STRING
+    "Exact ETL commit to fetch. This is the pin; the tag above only names it.")
+
 # Treat this as a subproject when someone add_subdirectory()s us.
 if(NOT CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     set(MQTT_BUILD_TESTS OFF)
@@ -91,10 +99,26 @@ if(MQTT_ETL_DIR)
     target_include_directories(mqtt_etl SYSTEM INTERFACE "${MQTT_ETL_DIR}/include")
 else()
     include(FetchContent)
+
+    # Pinned by commit, not by tag.
+    #
+    # A tag is a mutable ref. The same name can be moved to different content,
+    # and nothing in a build that only records "20.39.4" would notice -- which
+    # makes the build neither reproducible nor auditable, and is exactly the
+    # supply-chain question an integrator has to answer about every dependency
+    # they ship. The commit is immutable; the tag is kept alongside it because
+    # a bare hash tells a human nothing.
+    #
+    # .github/workflows/supply-chain.yml checks weekly that this commit is
+    # still the one MQTT_ETL_TAG names. A disagreement means the tag moved,
+    # which is worth being woken up for.
+    #
+    # No GIT_SHALLOW: fetching an arbitrary commit shallowly requires the
+    # remote to permit it, which is not something to depend on. The CI cache
+    # means the full clone happens once per key rather than once per job.
     FetchContent_Declare(etl
         GIT_REPOSITORY https://github.com/ETLCPP/etl.git
-        GIT_TAG        20.39.4
-        GIT_SHALLOW    TRUE)
+        GIT_TAG        ${MQTT_ETL_COMMIT})
     FetchContent_MakeAvailable(etl)
     get_target_property(_etl_includes etl INTERFACE_INCLUDE_DIRECTORIES)
     target_include_directories(mqtt_etl SYSTEM INTERFACE ${_etl_includes})

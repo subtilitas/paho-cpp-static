@@ -37,6 +37,13 @@ concurrency:
   group: wiki
   cancel-in-progress: false
 
+env:
+  # The ETL commit CMakeLists.txt pins. Not a tag: a tag can be moved,
+  # and a cache key that only names one would keep serving a stale
+  # checkout of the previous content. tools/pins.py --check enforces
+  # that this matches, and supply-chain.yml watches the tag itself.
+  ETL_COMMIT: 081e920302e4062dbd122fc3c86255825ccaa666
+
 jobs:
   build:
     name: Build and publish
@@ -46,12 +53,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Keep in step with the GIT_TAG in CMakeLists.txt.
       - name: Cache the ETL checkout
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: etl-wiki-20.39.4
+          key: etl-wiki-${{ env.ETL_COMMIT }}
 
       - name: Install Doxygen
         run: |

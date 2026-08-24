@@ -32,7 +32,11 @@ permissions:
   contents: read
 
 env:
-  ETL_TAG: 20.39.4
+  # The ETL commit CMakeLists.txt pins. Not a tag: a tag can be moved,
+  # and a cache key that only names one would keep serving a stale
+  # checkout of the previous content. tools/pins.py --check enforces
+  # that this matches, and supply-chain.yml watches the tag itself.
+  ETL_COMMIT: 081e920302e4062dbd122fc3c86255825ccaa666
 
   # Pinned for the same reason gcovr is: an analyser that changes its mind
   # between runs produces diffs nobody asked for and failures nobody can
@@ -48,6 +52,26 @@ env:
   GATE_CLANG_FORMAT: "true"
 
 jobs:
+  # Cheap, and it fails for a reason nobody has to investigate: something in
+  # this repository restates a dependency pin and no longer agrees with
+  # CMakeLists.txt. Runs first because it needs nothing installed.
+  pins:
+    name: Pins and tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check every pin against CMakeLists.txt
+        run: python3 tools/pins.py --check
+
+      # The tools under tools/ generate published numbers -- the footprint
+      # table, the SBOM. A bug there is a wrong figure rather than a failed
+      # build, so they get a suite of their own. The cross job runs the same
+      # suite against arm-none-eabi-g++; this run covers the host.
+      - name: Test the generators
+        run: python3 -m unittest discover -s tools -p 'test_*.py' -v
+
   clang-tidy:
     name: clang-tidy
     runs-on: ubuntu-latest
@@ -59,7 +83,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: etl-tidy-${{ env.ETL_TAG }}
+          key: etl-tidy-${{ env.ETL_COMMIT }}
 
       - name: Install clang-tidy
         run: pipx install "clang-tidy==${{ env.CLANG_VERSION }}"

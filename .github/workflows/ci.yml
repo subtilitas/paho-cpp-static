@@ -14,7 +14,11 @@ concurrency:
 env:
   # Pinned so the FetchContent cache key below actually means something. Keep in
   # step with the GIT_TAG in CMakeLists.txt.
-  ETL_TAG: 20.39.4
+  # The ETL commit CMakeLists.txt pins. Not a tag: a tag can be moved,
+  # and a cache key that only names one would keep serving a stale
+  # checkout of the previous content. tools/pins.py --check enforces
+  # that this matches, and supply-chain.yml watches the tag itself.
+  ETL_COMMIT: 081e920302e4062dbd122fc3c86255825ccaa666
 
   GCOVR_VERSION: "7.2"
 
@@ -56,7 +60,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: etl-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-${{ env.ETL_TAG }}
+          key: etl-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-${{ env.ETL_COMMIT }}
 
       - name: Configure
         env:
@@ -84,7 +88,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: etl-asan-${{ env.ETL_TAG }}
+          key: etl-asan-${{ env.ETL_COMMIT }}
 
       - name: Configure with ASan and UBSan
         run: |
@@ -117,7 +121,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: etl-coverage-${{ env.ETL_TAG }}
+          key: etl-coverage-${{ env.ETL_COMMIT }}
 
       # Pinned: gcovr and gcov have to agree on the intermediate format, and a
       # mismatch reports 0% rather than failing, which is the worst outcome for
@@ -210,7 +214,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: etl-interop-${{ env.ETL_TAG }}
+          key: etl-interop-${{ env.ETL_COMMIT }}
 
       - name: Install Mosquitto
         run: |
