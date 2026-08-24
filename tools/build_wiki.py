@@ -47,6 +47,8 @@ PROSE_PAGES = [
     ("docs/porting.md", "Porting", "Porting guide"),
     ("docs/configuration.md", "Configuration", "Configuration"),
     ("docs/comparison-with-paho.md", "Comparison-with-Paho", "Comparison with Paho"),
+    ("docs/static-analysis.md", "Static-Analysis", "Static analysis"),
+    ("docs/misra.md", "MISRA", "MISRA C++:2023"),
     ("NOTICE.md", "Notices", "Licence and notices"),
 ]
 

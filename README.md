@@ -300,6 +300,7 @@ from the suite itself — so none of them can quietly drift out of date.
 | [docs/configuration.md](docs/configuration.md) | every config knob, sizing guidance, worked profiles |
 | [docs/comparison-with-paho.md](docs/comparison-with-paho.md) | differences from Eclipse Paho MQTT C and the reasoning |
 | [docs/static-analysis.md](docs/static-analysis.md) | CodeQL, clang-tidy and clang-format: what they report and the state of the triage |
+| [docs/misra.md](docs/misra.md) | MISRA C++:2023 self-assessment — the constructs measured, the two deviations, and what a real compliance claim would still need |
 
 ## Layout
 

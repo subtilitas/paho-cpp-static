@@ -65,6 +65,12 @@ jobs:
       - name: Check every pin against CMakeLists.txt
         run: python3 tools/pins.py --check
 
+      # Budgets, not prohibitions. Most are zero; the two that are not are the
+      # deviations argued in docs/misra.md, so a third one fails here and the
+      # argument has to be made rather than inherited.
+      - name: Scan for constructs a safety subset constrains
+        run: python3 tools/scan_constructs.py --check
+
       # The tools under tools/ generate published numbers -- the footprint
       # table, the SBOM. A bug there is a wrong figure rather than a failed
       # build, so they get a suite of their own. The cross job runs the same
