@@ -35,53 +35,53 @@ etl::string_view view(const uint8_t (&bytes)[N]) noexcept
 }
 
 // --- well formed -------------------------------------------------------------
-const uint8_t kAsciiTopic[] = {0x73, 0x65, 0x6E, 0x73, 0x6F, 0x72, 0x73, 0x2F, 0x37};
-const uint8_t kDel[] = {0x7F};                                    // U+007F
-const uint8_t kTwoByteMin[] = {0xC2, 0x80};                            // U+0080
-const uint8_t kTwoByteMax[] = {0xDF, 0xBF};                            // U+07FF
-const uint8_t kThreeByteMin[] = {0xE0, 0xA0, 0x80};                    // U+0800
-const uint8_t kReplacement[] = {0xEF, 0xBF, 0xBD};                    // U+FFFD
-const uint8_t kUmlaut[] = {0xC3, 0xA4};                            // U+00E4
-const uint8_t kFourByteMin[] = {0xF0, 0x90, 0x80, 0x80};            // U+10000
-const uint8_t kMaxCodePoint[] = {0xF4, 0x8F, 0xBF, 0xBF};            // U+10FFFF
-const uint8_t kByteOrderMark[] = {0xEF, 0xBB, 0xBF};                   // U+FEFF
-const uint8_t kControl01[] = {0x01};
-const uint8_t kControl1F[] = {0x1F};
+const uint8_t kAsciiTopic[]    = {0x73, 0x65, 0x6E, 0x73, 0x6F, 0x72, 0x73, 0x2F, 0x37};
+const uint8_t kDel[]           = {0x7F};                     // U+007F
+const uint8_t kTwoByteMin[]    = {0xC2, 0x80};               // U+0080
+const uint8_t kTwoByteMax[]    = {0xDF, 0xBF};               // U+07FF
+const uint8_t kThreeByteMin[]  = {0xE0, 0xA0, 0x80};         // U+0800
+const uint8_t kReplacement[]   = {0xEF, 0xBF, 0xBD};         // U+FFFD
+const uint8_t kUmlaut[]        = {0xC3, 0xA4};               // U+00E4
+const uint8_t kFourByteMin[]   = {0xF0, 0x90, 0x80, 0x80};   // U+10000
+const uint8_t kMaxCodePoint[]  = {0xF4, 0x8F, 0xBF, 0xBF};   // U+10FFFF
+const uint8_t kByteOrderMark[] = {0xEF, 0xBB, 0xBF};         // U+FEFF
+const uint8_t kControl01[]     = {0x01};
+const uint8_t kControl1F[]     = {0x1F};
 
 // --- forbidden by MQTT rather than by UTF-8 ----------------------------------
-const uint8_t kNul[] = {0x00};
+const uint8_t kNul[]       = {0x00};
 const uint8_t kNulInside[] = {0x61, 0x00, 0x62};
 
 // --- overlong ----------------------------------------------------------------
-const uint8_t kOverlongNul2[] = {0xC0, 0x80};                            // U+0000 as 2
-const uint8_t kOverlongSlash[] = {0xC0, 0xAF};                           // '/' as 2
-const uint8_t kOverlongDel[] = {0xC1, 0xBF};                            // U+007F as 2
-const uint8_t kOverlongNul3[] = {0xE0, 0x80, 0x80};
-const uint8_t kOverlong07FF[] = {0xE0, 0x9F, 0xBF};
-const uint8_t kOverlongNul4[] = {0xF0, 0x80, 0x80, 0x80};
-const uint8_t kOverlongFFFF[] = {0xF0, 0x8F, 0xBF, 0xBF};
+const uint8_t kOverlongNul2[]  = {0xC0, 0x80};   // U+0000 as 2
+const uint8_t kOverlongSlash[] = {0xC0, 0xAF};   // '/' as 2
+const uint8_t kOverlongDel[]   = {0xC1, 0xBF};   // U+007F as 2
+const uint8_t kOverlongNul3[]  = {0xE0, 0x80, 0x80};
+const uint8_t kOverlong07FF[]  = {0xE0, 0x9F, 0xBF};
+const uint8_t kOverlongNul4[]  = {0xF0, 0x80, 0x80, 0x80};
+const uint8_t kOverlongFFFF[]  = {0xF0, 0x8F, 0xBF, 0xBF};
 
 // --- surrogates and out of range ---------------------------------------------
-const uint8_t kSurrogateLow[] = {0xED, 0xA0, 0x80};                   // U+D800
-const uint8_t kSurrogateHigh[] = {0xED, 0xBF, 0xBF};                   // U+DFFF
-const uint8_t kAboveMax[] = {0xF4, 0x90, 0x80, 0x80};           // U+110000
-const uint8_t kWayAboveMax[] = {0xF7, 0xBF, 0xBF, 0xBF};           // U+1FFFFF
+const uint8_t kSurrogateLow[]  = {0xED, 0xA0, 0x80};         // U+D800
+const uint8_t kSurrogateHigh[] = {0xED, 0xBF, 0xBF};         // U+DFFF
+const uint8_t kAboveMax[]      = {0xF4, 0x90, 0x80, 0x80};   // U+110000
+const uint8_t kWayAboveMax[]   = {0xF7, 0xBF, 0xBF, 0xBF};   // U+1FFFFF
 
 // --- structurally malformed ---------------------------------------------------
-const uint8_t kLoneCont80[] = {0x80};
-const uint8_t kLoneContBF[] = {0xBF};
-const uint8_t kTruncated2[] = {0xC2};
-const uint8_t kTruncated3[] = {0xE0, 0xA0};
-const uint8_t kTruncated4[] = {0xF0, 0x90, 0x80};
-const uint8_t kBadCont[] = {0xC2, 0x41};
-const uint8_t kFE[] = {0xFE};
-const uint8_t kFF[] = {0xFF};
-const uint8_t kFiveByte[] = {0xFB, 0xBF, 0xBF, 0xBF, 0xBF};
-const uint8_t kSixByte[] = {0xFD, 0xBF, 0xBF, 0xBF, 0xBF, 0xBF};
+const uint8_t kLoneCont80[]  = {0x80};
+const uint8_t kLoneContBF[]  = {0xBF};
+const uint8_t kTruncated2[]  = {0xC2};
+const uint8_t kTruncated3[]  = {0xE0, 0xA0};
+const uint8_t kTruncated4[]  = {0xF0, 0x90, 0x80};
+const uint8_t kBadCont[]     = {0xC2, 0x41};
+const uint8_t kFE[]          = {0xFE};
+const uint8_t kFF[]          = {0xFF};
+const uint8_t kFiveByte[]    = {0xFB, 0xBF, 0xBF, 0xBF, 0xBF};
+const uint8_t kSixByte[]     = {0xFD, 0xBF, 0xBF, 0xBF, 0xBF, 0xBF};
 const uint8_t kGoodThenBad[] = {0x6F, 0x6B, 0xC0, 0x80};
 
 // --- used against the topic predicates and the encoder ------------------------
-const uint8_t kBadTopic[] = {0x61, 0x2F, 0xC0, 0x80};
+const uint8_t kBadTopic[]  = {0x61, 0x2F, 0xC0, 0x80};
 const uint8_t kBadFilter[] = {0x61, 0x2F, 0xC0, 0xAF};
 const uint8_t kBadString[] = {0x62, 0x61, 0x64, 0xC0, 0x80};
 
@@ -203,9 +203,9 @@ TEST(encoder_refuses_to_emit_a_malformed_string)
     CHECK(codec::connect_remaining_length(opts).error() == Error::InvalidArgument);
 
     static const uint8_t payload[] = {'x'};
-    opts.username     = etl::string_view();
-    opts.will.topic   = bad;
-    opts.will.payload = etl::span<const uint8_t>(payload, 1);
+    opts.username                  = etl::string_view();
+    opts.will.topic                = bad;
+    opts.will.payload              = etl::span<const uint8_t>(payload, 1);
     CHECK(codec::connect_remaining_length(opts).error() == Error::InvalidArgument);
 
     const TopicSubscription sub{bad, QoS::AtMostOnce};

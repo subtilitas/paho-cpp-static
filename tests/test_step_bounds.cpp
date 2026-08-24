@@ -84,7 +84,8 @@ public:
     void close() noexcept override { connected_ = false; }
     bool is_connected() const noexcept override { return connected_; }
 
-    int    recv_calls = 0;
+    int recv_calls = 0;
+
     size_t emitted() const noexcept { return offset_; }
 
 private:
@@ -147,7 +148,7 @@ TEST(step_does_a_bounded_amount_of_work_per_call)
     CHECK(client.is_connected());
 
     transport.recv_calls = 0;
-    const size_t before = transport.emitted();
+    const size_t before  = transport.emitted();
 
     CHECK(client.step() == Error::Ok);
 

@@ -19,9 +19,9 @@ constexpr uint8_t byte_at(etl::string_view s, size_t i) noexcept
 /// its entry is an overlong: legal to decode, illegal to have written.
 constexpr uint32_t kSmallestFor[4] = {0x00000000u, 0x00000080u, 0x00000800u, 0x00010000u};
 
-constexpr uint32_t kMaxCodePoint      = 0x0010FFFFu;
-constexpr uint32_t kSurrogateFirst    = 0x0000D800u;
-constexpr uint32_t kSurrogateLast     = 0x0000DFFFu;
+constexpr uint32_t kMaxCodePoint   = 0x0010FFFFu;
+constexpr uint32_t kSurrogateFirst = 0x0000D800u;
+constexpr uint32_t kSurrogateLast  = 0x0000DFFFu;
 
 }   // namespace
 
