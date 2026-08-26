@@ -330,3 +330,7 @@ source code is present here**. The client is an independent implementation
 written against the OASIS MQTT 3.1.1 specification. See
 [NOTICE.md](NOTICE.md) for the full provenance statement and third-party
 notices.
+
+---
+
+In collaboration with Claude Code.
