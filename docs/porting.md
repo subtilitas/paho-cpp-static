@@ -1,7 +1,7 @@
 # Porting guide
 
-The library has no operating system dependency. To run it on a new target you
-implement two interfaces. That is the entire porting layer.
+The library has no operating system dependency. Porting it to a new target means
+implementing two interfaces.
 
 ## The contract
 
@@ -26,12 +26,11 @@ public:
 ### Rules
 
 **Never block.** Every method must return promptly. `Client::step()` is called
-from your superloop or task; a blocking implementation stalls everything else
-you are doing.
+from your superloop or task, so a blocking implementation stalls everything else
+in it.
 
-**Return `Error::WouldBlock` when you made no progress.** This is not an error
-and the client treats it as normal. It is how the whole non-blocking design
-holds together.
+**Return `Error::WouldBlock` when you made no progress.** This is not an error;
+the client treats it as normal.
 
 **Partial transfers are expected.** `send()` may accept one byte of a
 200-byte packet. `recv()` may produce half a header. The client handles both;
@@ -58,13 +57,12 @@ available", same as `WouldBlock`.
 
 ### The clock
 
-Monotonic milliseconds from any fixed origin. It is allowed to wrap — every
-comparison inside the client uses unsigned difference arithmetic
-(`elapsed_ms(now, then)` is just `now - then`), so a 32-bit counter rolling over
-every 49.7 days is a non-event. Do not try to be clever about rollover; you will
-only break it.
+Monotonic milliseconds from any fixed origin. It may wrap: every comparison
+inside the client uses unsigned difference arithmetic (`elapsed_ms(now, then)`
+is `now - then`), so a 32-bit counter rolling over every 49.7 days is handled.
+Do not compensate for rollover yourself.
 
-Resolution of 1 ms is not required. Anything up to about 100 ms is fine given
+Resolution of 1 ms is not required; anything up to about 100 ms is fine, since
 keep-alive intervals are measured in seconds.
 
 ## A minimal implementation
@@ -166,9 +164,9 @@ set to `0` gives non-blocking behaviour. `FreeRTOS_recv()` returns
 
 ### Bare metal with an AT-command modem
 
-This works, and the interface was designed with it in mind. `connect()` runs
-your `AT+CIPSTART` state machine, returning `WouldBlock` on every call until the
-modem reports success. `send()` drives `AT+CIPSEND`, returning `WouldBlock`
+The interface was designed with this case in mind. `connect()` runs your
+`AT+CIPSTART` state machine, returning `WouldBlock` until the modem reports
+success. `send()` drives `AT+CIPSEND`, returning `WouldBlock`
 while a previous send is still outstanding. `recv()` drains whatever your URC
 handler has buffered. The client's tolerance of partial transfers and the
 8-round receive cap matter more here than anywhere else.
@@ -182,11 +180,10 @@ for the block condition.
 
 ### Fixed IPv4 address, no resolver
 
-`examples/tcp_ip_transport.hpp` is the version worth reading before you port,
-because it is the shape most devices actually ship. It drops `getaddrinfo`
-entirely and fills a `sockaddr_in` from four octets, which matters because a
-resolver is frequently absent on an embedded stack, and where it exists it
-allocates and blocks.
+`examples/tcp_ip_transport.hpp` is the shape most devices ship, and the one
+worth reading before porting. It drops `getaddrinfo` and fills a `sockaddr_in`
+from four octets: a resolver is frequently absent on an embedded stack, and
+where it exists it allocates and blocks.
 
 Its `parse_ipv4()` is `constexpr` and hand-rolled rather than `inet_pton()`, so
 a compiled-in broker address is validated at build time:
@@ -209,8 +206,7 @@ do the TCP connect *and* the handshake inside `connect()`, returning
 `WouldBlock` until the handshake completes, and afterwards move ciphertext in
 `send()`/`recv()`. The client never learns the difference.
 
-`examples/tls_transport.hpp` shows this against mbedTLS. The mapping is
-pleasingly direct, because mbedTLS already speaks the same language:
+`examples/tls_transport.hpp` shows this against mbedTLS. The mapping is direct:
 
 | mbedTLS | Transport |
 |---|---|

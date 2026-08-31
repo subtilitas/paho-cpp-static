@@ -1,7 +1,7 @@
 # Getting started
 
-Goal: a working publish and subscribe against a real broker in under five
-minutes, then the shape of your own first program.
+A working publish and subscribe against a real broker, then the shape of your
+own first program.
 
 ## Build and run the demo
 
@@ -28,7 +28,7 @@ mosquitto -p 1883 &
 
 ```
 connecting to 127.0.0.1:1883, topic 'demo/hello'
-client footprint: 2560 bytes
+client footprint: 2552 bytes
 connected (session_present=0)
 subscribed to 'demo/hello'
   -> reading 0
@@ -36,15 +36,15 @@ subscribed to 'demo/hello'
   delivered, id 2
 ```
 
-The message goes out at QoS 1 and comes straight back through the client's own
-subscription, so a single run exercises publish, subscribe, delivery and
+The message goes out at QoS 1 and returns through the client's own
+subscription, so one run exercises publish, subscribe, delivery and
 acknowledgement.
 
 ### No broker to hand?
 
-`tools/stub_broker.py` is a small MQTT 3.1.1 broker in the standard library,
-for when installing one is not an option — a locked-down build agent, a slim
-container, an aeroplane. It needs no arguments and no dependencies:
+`tools/stub_broker.py` is a small MQTT 3.1.1 broker written against the standard
+library, for when installing one is not an option. It needs no arguments and no
+dependencies:
 
 ```bash
 python3 tools/stub_broker.py --port 1883 &
@@ -54,10 +54,8 @@ python3 tools/stub_broker.py --port 1883 &
 
 It holds a real session: both directions at QoS 0, 1 and 2 with the full
 acknowledgement handshakes, subscribe and unsubscribe, keep-alive, and routing
-of published messages back to matching subscriptions.
-
-Its more interesting use is provoking the failures a healthy broker will not
-give you, which are the paths a client is most likely to get wrong:
+of published messages back to matching subscriptions. It also provokes failures
+a healthy broker will not:
 
 ```bash
 python3 tools/stub_broker.py --refuse 5        # CONNACK "not authorized"
@@ -65,10 +63,9 @@ python3 tools/stub_broker.py --drop-after 8    # socket dies mid-session
 python3 tools/stub_broker.py --session-present # exercise session resumption
 ```
 
-It is a development aid, not a broker and not a conformance checker: it is
-permissive, so it will not catch your client sending something the spec
-forbids. Check against real Mosquitto before you believe a port works — which
-is what this project's own CI does on every push.
+It is permissive, so it will not catch a client sending something the spec
+forbids. Check against real Mosquitto before believing a port works, as this
+project's CI does on every push.
 
 ## The three examples
 
@@ -129,9 +126,9 @@ void loop()
 }
 ```
 
-`step()` does everything: transport connect, transmit, receive, dispatch,
-keep-alive, retransmission, re-subscription. It never blocks and never calls
-back into itself.
+`step()` drives transport connect, transmit, receive, dispatch, keep-alive,
+retransmission and re-subscription. It never blocks and never calls back into
+itself.
 
 ## Two traps, both consequences of not allocating
 
@@ -169,8 +166,8 @@ Back-pressure is **not** an error. If the transport will not accept bytes,
 `step()` returns `Ok` and the data stays queued. Check `tx_pending()` if you
 want to throttle.
 
-Capacity errors are worth handling rather than asserting on, because they are
-the normal way a statically-sized client says "not right now":
+Capacity errors are the normal way a statically-sized client says "not right
+now", so handle them rather than asserting:
 
 | Error | Means | Reasonable response |
 |---|---|---|
@@ -181,8 +178,8 @@ the normal way a statically-sized client says "not right now":
 
 ## Reconnecting
 
-There is no built-in reconnect policy, on purpose — back-off is specific to your
-power budget and data plan. It is three lines:
+There is no built-in reconnect policy: back-off is specific to your power budget
+and data plan.
 
 ```cpp
 if (client.state() == mqtt::State::Idle && backoff_expired())
@@ -190,8 +187,7 @@ if (client.state() == mqtt::State::Idle && backoff_expired())
 ```
 
 Subscriptions are remembered across a reconnect and re-sent automatically when
-the broker reports it did not keep your session, so there is no bookkeeping on
-your side.
+the broker reports it did not keep the session.
 
 ## Where to go next
 

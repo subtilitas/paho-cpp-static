@@ -11,30 +11,25 @@ run time.
 
 - **No allocation after construction.** Every buffer and table is a member array
   sized by a compile-time config. `sizeof(Client<Cfg>)` is the entire cost.
-- **No exceptions, no RTTI.** Builds and links clean under `-fno-exceptions
-  -fno-rtti` on GCC and Clang, and with `/EHsc` and `/GR` removed plus
-  `_HAS_EXCEPTIONS=0` on MSVC. A `#error` in `error.hpp` checks the compiler's
-  own `__cpp_exceptions` / `_CPPUNWIND`, so a flag that fails to take effect is
-  a build failure rather than a quietly broken promise. Every failure path
-  returns an `mqtt::Error`.
-- **No OS dependency.** No threads, no mutexes, no sockets, no `<chrono>`. You
-  implement two small interfaces; the client never blocks.
-- **`step()` returns.** One call does a bounded amount of work no matter what
-  the peer sends: the receive path caps its `recv()` calls per step, the drain
-  loop strictly shrinks its buffer each pass, and there is no recursion
-  anywhere on the protocol path. With no allocation to block on and no lock to
-  contend, `step()` has a computable worst case rather than a hopeful one —
-  which is the property that lets it sit in a superloop next to a watchdog.
-  CI measures the stack on the target and fails on a dynamically sized frame.
-- **C++ throughout**, so there is no C wrapper to write and no `void*` context
-  pointers to keep alive.
+- **No exceptions, no RTTI.** Clean under `-fno-exceptions -fno-rtti` on GCC and
+  Clang, and with `/EHsc` and `/GR` removed plus `_HAS_EXCEPTIONS=0` on MSVC. A
+  `#error` in `error.hpp` checks the compiler's own `__cpp_exceptions` /
+  `_CPPUNWIND`, so a flag that failed to apply is a build failure. Every failure
+  path returns an `mqtt::Error`.
+- **No OS dependency.** No threads, mutexes, sockets or `<chrono>`. You
+  implement two interfaces; the client never blocks.
+- **`step()` returns in bounded time.** The receive path caps its `recv()` calls
+  per step, the drain loop strictly shrinks its buffer each pass, and nothing on
+  the protocol path recurses. CI measures stack usage on the target and fails on
+  a dynamically sized frame.
+- **C++ throughout** — no C wrapper, no `void*` context pointers.
 - **Serialization on the [Embedded Template Library](https://www.etlcpp.com/)**,
-  using `etl::byte_stream_writer` / `etl::byte_stream_reader`, which report
+  via `etl::byte_stream_writer` / `etl::byte_stream_reader`, which report
   overruns as `bool` / `etl::optional` rather than throwing.
 
-Roughly 2 400 lines of library, and about 1 KB of RAM at the small end. Flash,
-RAM and stack are measured on every push — on the host, and cross-compiled for
-Cortex-M0+ and Cortex-M4 — see
+About 2 200 lines of library and 1 KB of RAM at the small end. Flash, RAM and
+stack are measured on every push, on the host and cross-compiled for Cortex-M0+
+and Cortex-M4 — see
 [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint)
 and the [Cross-compile](https://github.com/subtilitas/paho-cpp-static/actions/workflows/cross.yml)
 job summaries.
@@ -98,18 +93,17 @@ void app_loop()          // superloop or RTOS task
 }
 ```
 
-Two things that catch people out, both consequences of not allocating:
+Two consequences of not allocating:
 
-- **`Message::topic` and `Message::payload` are views into the receive buffer.**
-  They are valid for the duration of the callback and no longer. Copy anything
-  you intend to keep.
+- **`Message::topic` and `Message::payload` are views into the receive buffer**,
+  valid only for the duration of the callback. Copy what you keep.
 - **Callbacks are non-owning.** `etl::delegate` stores a pointer to the
   callable, so a lambda passed as a temporary dangles. Name it (`static`, or a
   member) rather than passing it inline.
 
 ## Porting
 
-The entire platform layer is two interfaces:
+The platform layer is two interfaces:
 
 ```cpp
 class Transport
@@ -146,85 +140,88 @@ AT-command modem notes.
 
 | Profile | `sizeof(Client<Cfg>)` |
 |---|---|
-| Sensor — QoS 0 only, 256 B buffers | ~1.0 KB |
-| `DefaultConfig` | ~4.6 KB |
-| Gateway — 4 KB buffers, 16 inflight, 32 subs | ~23 KB |
+| Sensor — QoS 0 only, 256 B buffers | 1064 B |
+| `DefaultConfig` | 4600 B |
+| Gateway — 4 KB buffers, 16 inflight, 32 subs | 23 456 B |
 
 Flash is roughly 6.9 KB for the non-template core, plus about 9 KB for a
-`Client<Cfg>` instantiation that touches every public entry point — considerably
-less in a real application, since the linker drops what you never call.
+`Client<Cfg>` instantiation touching every public entry point — less in a real
+application, since the linker drops what you never call.
 
-These are x86-64 GCC at `-Os` and indicative rather than a promise for
-Cortex-M. Exact figures are **remeasured on every push** and published to
+These are x86-64 GCC at `-Os`, indicative rather than a promise for Cortex-M.
+Exact figures are remeasured on every push and published to
 [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint),
-which is the number to trust if this table and that page ever disagree.
+which takes precedence if the two ever disagree.
 
-The one deliberate trade-off: each inflight QoS > 0 slot owns a
+One deliberate trade-off: each inflight QoS > 0 slot owns a
 `max_persisted_msg_size` buffer holding the serialized packet, so retransmission
-needs nothing from your application. That costs
+needs nothing from the application. It costs
 `max_inflight_out × max_persisted_msg_size` bytes, and it is why `publish()`
 returns `Error::PayloadTooLarge` for a QoS > 0 message that will not fit. QoS 0
 bypasses it entirely.
 
 [docs/configuration.md](docs/configuration.md) documents every knob with sizing
-guidance and worked examples for sensor, reliable-sensor and gateway profiles.
+guidance and worked profiles.
 
 ## Scope
 
-Implemented: CONNECT/CONNACK with will and credentials, PUBLISH at QoS 0/1/2 in
-both directions with full acknowledgement handshakes and DUP retransmission,
+**Implemented.** CONNECT/CONNACK with will and credentials, PUBLISH at QoS 0/1/2
+in both directions with full acknowledgement handshakes and DUP retransmission,
 SUBSCRIBE/SUBACK, UNSUBSCRIBE/UNSUBACK, PINGREQ/PINGRESP keep-alive, DISCONNECT,
 topic wildcard matching, UTF-8 validation of every string field in both
 directions (§1.5.3, overlong encodings and surrogates included), and automatic
 re-subscription after a session the broker did not retain.
 
-Deliberately absent: MQTT 5.0 properties, WebSocket transport, HTTP/SOCKS
+**Absent by choice.** MQTT 5.0 properties, WebSocket transport, HTTP/SOCKS
 proxying, on-disk persistence, MQTT 3.1 (protocol level 3), and automatic
-reconnection policy. TLS is supported as a `Transport` implementation rather
-than a compiled-in dependency.
+reconnection policy. TLS is a `Transport` implementation rather than a
+compiled-in dependency.
 
-Reconnection is left to you on purpose — back-off policy is application-specific
-(battery, duty cycle, data cost), and it is three lines:
+Reconnection is left to the application because back-off policy is specific to
+its power budget and data cost:
 
 ```cpp
 if (client.state() == mqtt::State::Idle && backoff_expired())
     client.connect(opts);
 ```
 
-Subscriptions are remembered and re-sent automatically, so a reconnect restores
-your session without bookkeeping on your side. This holds regardless of
+Subscriptions are remembered and re-sent automatically, regardless of
 `clean_session`: that flag governs what the *broker* keeps, while the client's
-table is its own record of what you asked for. Call `unsubscribe()` to forget a
+table records what the application asked for. Call `unsubscribe()` to forget a
 filter.
 
-[docs/comparison-with-paho.md](docs/comparison-with-paho.md) explains what was
-dropped and why, with allocation counts for the same operations in both
-libraries.
+[docs/comparison-with-paho.md](docs/comparison-with-paho.md) gives the
+differences from Eclipse Paho MQTT C, with allocation counts for the same
+operations in both libraries.
 
 ## Testing
 
-A dependency-free harness — deliberately not GoogleTest, since a framework that
-reports failures by throwing would undercut the `-fno-exceptions` guarantee. The
-live count and the name of every case are on the generated
+A dependency-free harness rather than GoogleTest, which reports failures by
+throwing and would undercut the `-fno-exceptions` guarantee. Every case name and
+the live count are on the generated
 [Test inventory](https://github.com/subtilitas/paho-cpp-static/wiki/Test-Inventory)
-page, which is rebuilt from the suite itself on every push.
+page, rebuilt from the suite on every push.
 
 | File | Covers |
 |---|---|
 | `tests/test_packet.cpp` | variable byte integers, fixed header flag validation |
 | `tests/test_codec.cpp` | encode/decode round trips, golden bytes, malformed input |
+| `tests/test_encode_bounds.cpp` | every encoder against every output buffer size |
 | `tests/test_topic.cpp` | wildcard matching against the spec's own examples |
+| `tests/test_utf8.cpp` | overlongs, surrogates, truncation, U+0000, the BOM |
+| `tests/test_tx_queue.cpp` | FIFO reserve, commit, consume, compaction |
 | `tests/test_client.cpp` | handshakes, QoS flows, keep-alive, fragmentation, teardown |
+| `tests/test_step_bounds.cpp` | work per `step()` does not grow with what the peer queues |
+| `tests/test_config_profiles.cpp` | the client instantiates and runs at each documented profile |
 | `tests/test_to_string.cpp` | every enumerator has a distinct name and no fallthrough |
 | `tests/test_no_alloc.cpp` | global `operator new` replaced with a counter |
 
-`test_no_alloc.cpp` is the one that matters. It replaces global `operator new`
+`test_no_alloc.cpp` is the load-bearing one. It replaces global `operator new`
 with a counting version, arms it, and drives a full session — connect,
 subscribe, publish at all three QoS levels, inbound traffic, keep-alive,
 retransmission, table exhaustion, a malformed-packet teardown, disconnect — then
-asserts the counter is still zero. A separate case proves construction does not
-allocate either, so a `Client` can live in `.bss` on a target with no heap
-linked at all.
+asserts the counter is zero. A separate case proves construction does not
+allocate, so a `Client` can live in `.bss` on a target with no heap linked.
 
 ### Coverage
 
@@ -236,43 +233,34 @@ linked at all.
 | Functions | 398 | 482 | 82.6% |
 <!-- coverage:end -->
 
-Measured by `gcovr` on every push and also published to
+Measured by `gcovr` on every push and published to
 [Codecov](https://codecov.io/gh/subtilitas/paho-cpp-static). The table is
-written by `tools/coverage.py`, and CI re-measures and runs
-`tools/coverage.py --check`, which fails the build when these figures drift
-from what the suite actually does. So the numbers are checked rather than
-asserted, and nothing rewrites this file behind you — a README that edits
-itself is one nobody reads the diff of, and a coverage drop is exactly the
-diff worth reading. Scope is `include/mqtt/` and `src/` only; tests, examples
-and the fetched ETL checkout are excluded, since counting them would flatter
-the number rather than measure it.
+written by `tools/coverage.py`; CI re-measures and runs `--check`, failing the
+build when these figures drift from what the suite does. Scope is
+`include/mqtt/` and `src/`; tests, examples and the fetched ETL checkout are
+excluded, since counting them would flatter the number.
 
-Function coverage is reported but deliberately not gated. The suite
-instantiates the client at several configurations, and each instantiation
-creates its own set of template functions — so testing *more* configurations
-lowers that percentage while raising every other one.
+Function coverage is reported but not gated: the suite instantiates the client
+at several configurations, and each instantiation creates its own set of
+template functions, so testing more configurations lowers that percentage while
+raising every other one.
 
-**The Codecov badge reads lower than `gcovr` reports, and both are right.**
-gcovr counts a line as covered if it executed at all. Codecov additionally
-tracks *partials* — a line whose branches were only partly taken, such as an
-`if` that was never false — and a partial is not a hit. So a guard clause that
-every test walks past but none trips counts once for gcovr and against you on
-the badge. The badge is
-therefore closer to branch coverage than to line coverage, and it is the harder
-number to move; chase it by testing the untaken side of a condition, not by
-executing more lines.
+**The Codecov badge reads lower than `gcovr`, and both are right.** gcovr counts
+a line as covered if it executed at all. Codecov also tracks *partials* — a line
+whose branches were only partly taken, such as an `if` that was never false —
+and a partial is not a hit. The badge is therefore closer to branch coverage;
+move it by testing the untaken side of a condition, not by executing more lines.
 
-Instrumentation is applied `PUBLIC`, which matters more than it sounds: most of
-this library is templates in headers, so the code under test is compiled into
-the *test* objects rather than into `libpaho_cpp_static.a`. Measuring only the
-library target would report a healthy figure for four small `.cpp` files and say
-nothing whatever about `client.hpp`, where the state machine lives.
+Instrumentation is `PUBLIC` because most of this library is templates in
+headers, so the code under test compiles into the *test* objects rather than
+into `libpaho_cpp_static.a`. Measuring only the library target would report a
+healthy figure for four small `.cpp` files and say nothing about `client.hpp`.
 
-CI fails below a floor set in `.github/workflows/ci.yml` (`COVERAGE_MIN_LINE`,
-`COVERAGE_MIN_BRANCH`), deliberately a couple of points under where the suite
-sits so ordinary churn does not trip it and raising it is a decision rather than
-a drift. The gate is `gcovr`'s own `--fail-under-*` on the runner, not a Codecov
-status, so the build does not depend on a third-party service being reachable.
+CI fails below a floor in `.github/workflows/ci.yml` (`COVERAGE_MIN_LINE`,
+`COVERAGE_MIN_BRANCH`), set a couple of points under where the suite sits so
+ordinary churn does not trip it. The gate is `gcovr`'s own `--fail-under-*` on
+the runner, not a Codecov status, so the build does not depend on a third-party
+service.
 
 Reproduce it locally:
 
@@ -285,47 +273,45 @@ gcovr --root . --filter include/mqtt/ --filter src/ --print-summary \
 python3 tools/coverage.py --summary coverage.json --check
 ```
 
-`--check` is what CI runs. Use `--write` instead to update the table above
-after a change that legitimately moves it.
+`--check` is what CI runs; `--write` updates the table after a change that
+legitimately moves it.
 
 Also verified:
 
 - Clean under `-fsanitize=address,undefined`.
 - Clean under `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion
   -Wold-style-cast -Wcast-align`.
-- CodeQL, clang-tidy and clang-format run on every push. They are advisory
-  while their findings are triaged, rather than gating from day one on a
-  backlog nobody has read — see
-  [docs/static-analysis.md](docs/static-analysis.md) for where that has got to.
+- clang-tidy and clang-format gate on every push; CodeQL runs on every push and
+  reports to the Security tab. See
+  [docs/static-analysis.md](docs/static-analysis.md).
 - `nm` on the library and on a full `Client` instantiation shows no reference to
   `malloc`, `operator new`, `__cxa_throw`, `_Unwind_*` or any typeinfo symbol.
-- Interoperates with Mosquitto at QoS 0/1/2 in both directions, with the
-  broker's own trace confirming complete PUBLISH/PUBREC/PUBREL/PUBCOMP
-  handshakes and keep-alive pings, and no protocol errors logged. CI runs this
-  on every push.
+- Interoperates with Mosquitto at QoS 0/1/2 in both directions, the broker's own
+  trace confirming complete PUBLISH/PUBREC/PUBREL/PUBCOMP handshakes and
+  keep-alive pings with no protocol errors logged. CI runs this on every push.
 
 ## Documentation
 
-The [wiki](https://github.com/subtilitas/paho-cpp-static/wiki) is the rendered
-version of everything below, rebuilt by CI on every push. It also carries three
-pages that are *generated from the source* rather than written by hand:
+The [wiki](https://github.com/subtilitas/paho-cpp-static/wiki) renders
+everything below, rebuilt by CI on every push. Three of its pages are generated
+from the source rather than written by hand, so they cannot drift:
 [API reference](https://github.com/subtilitas/paho-cpp-static/wiki/API-Reference)
 from the header comments,
 [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint)
 from compiling and measuring, and
 [Test inventory](https://github.com/subtilitas/paho-cpp-static/wiki/Test-Inventory)
-from the suite itself — so none of them can quietly drift out of date.
+from the suite itself.
 
 | Document | Contents |
 |---|---|
 | [docs/getting-started.md](docs/getting-started.md) | build, run against a broker, write your first program |
-| [docs/architecture.md](docs/architecture.md) | layering, state machine, buffers, ownership rules, where the allocations went |
-| [docs/porting.md](docs/porting.md) | implementing `Transport` and `Clock`, platform notes, TLS, how to verify a port |
+| [docs/architecture.md](docs/architecture.md) | layering, state machine, buffers, ownership rules |
+| [docs/porting.md](docs/porting.md) | implementing `Transport` and `Clock`, platform notes, TLS, verifying a port |
 | [docs/configuration.md](docs/configuration.md) | every config knob, sizing guidance, worked profiles |
 | [docs/comparison-with-paho.md](docs/comparison-with-paho.md) | differences from Eclipse Paho MQTT C and the reasoning |
-| [docs/static-analysis.md](docs/static-analysis.md) | CodeQL, clang-tidy and clang-format: what they report and the state of the triage |
-| [docs/misra.md](docs/misra.md) | MISRA C++:2023 self-assessment — the constructs measured, the two deviations, and what a real compliance claim would still need |
-| [CHANGELOG.md](CHANGELOG.md) | what changed in each release, and the 0.x rule for what counts as a breaking change |
+| [docs/static-analysis.md](docs/static-analysis.md) | what CodeQL, clang-tidy and clang-format report, and which of them gate |
+| [docs/misra.md](docs/misra.md) | MISRA C++:2023 self-assessment — constructs measured, two deviations, what a real claim would need |
+| [CHANGELOG.md](CHANGELOG.md) | what changed in each release, and the 0.x rule for breaking changes |
 
 ## Layout
 

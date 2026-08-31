@@ -5,42 +5,36 @@
 A compliance claim under MISRA requires a licensed copy of the standard, a
 qualified checking tool, a documented deviation procedure per MISRA
 Compliance:2020, and a guideline enforcement plan showing how every guideline is
-addressed. None of that has been done here. What follows is the honest
-preparatory step: an argument that the codebase is *plausibly* in reach, the
-mechanical evidence for it, and a list of the deviations that would need
-writing up.
-
-If you are evaluating this library for a safety-related programme, read this as
-"here is what we already know about our own code", not as a substitute for
-running your own tool over it.
+addressed. None of that has been done here. What follows is the preparatory
+step: an argument that the codebase is plausibly in reach, the mechanical
+evidence for it, and the deviations that would need writing up. It is not a
+substitute for running a qualified tool over the code.
 
 ---
 
-## Is it even plausible?
+## Is it plausible?
 
-Three facts make the question worth asking rather than dismissing.
+Three facts make the question worth asking.
 
-**MISRA C++:2023 targets C++17** (ISO/IEC 14882:2017) — the language this
-library is written in. Its predecessor MISRA C++:2008 targeted C++03, which is
-why template-heavy modern C++ was historically treated as out of scope for
-safety work. That is no longer the situation.
+**MISRA C++:2023 targets C++17** (ISO/IEC 14882:2017), the language this library
+is written in. Its predecessor targeted C++03, which is why template-heavy
+modern C++ was historically treated as out of scope for safety work.
 
 **It is now the single subset.** MISRA C++:2023 merges the work of AUTOSAR
-C++14, which had been the de-facto choice for automotive C++. Tool vendors
-describe AUTOSAR C++14 as superseded by it. (MISRA's own site has not published
-a formal withdrawal notice that I could find, so treat "superseded" as the
-industry's reading rather than a first-party statement.)
+C++14, the previous de-facto choice for automotive C++. Tool vendors describe
+AUTOSAR C++14 as superseded by it. MISRA has published no formal withdrawal
+notice, so treat "superseded" as the industry's reading rather than a
+first-party statement.
 
-**Templates are not banned.** The standard has a section devoted to them, and
-the rule from it that gets cited is a narrow one — function templates shall not
-be explicitly specialised. This library specialises no function template. The
-cost of a template-heavy codebase under MISRA is not prohibition; it is that
-system-scope rules must be checked across every instantiation, which is a
-tooling expense rather than a redesign.
+**Templates are not banned.** The standard devotes a section to them, and the
+rule usually cited is narrow: function templates shall not be explicitly
+specialised. This library specialises none. The cost of a template-heavy
+codebase under MISRA is not prohibition but tooling expense — system-scope rules
+must be checked across every instantiation.
 
-**What I could not establish:** any published data on what a MISRA C++:2023
-assessment actually costs for a template-heavy C++17 library. Treat claims in
-either direction — including optimistic ones here — as unsupported.
+**Not established:** any published data on what a MISRA C++:2023 assessment
+costs for a template-heavy C++17 library. Treat claims in either direction,
+including optimistic ones here, as unsupported.
 
 ---
 
@@ -105,9 +99,8 @@ Enforced elsewhere, by the compiler rather than by this script:
 
 ## Deviations
 
-Two, both narrow, both here so that adding a third means making the argument
-again rather than inheriting it. `scan_constructs.py` fails if either budget
-grows.
+Two, both narrow. `scan_constructs.py` fails if either budget grows, so adding a
+third means making the argument again rather than inheriting it.
 
 ### `reinterpret_cast`, ×2
 
@@ -134,14 +127,12 @@ wire boundary, both `char`/`uint8_t`, both justified by the aliasing rules.
 `error.hpp` defines it. It turns an ETL stream write returning `bool` into an
 early return of `Error::BufferTooSmall`.
 
-It exists because the early return is the point. A function cannot return from
-its caller, so the alternatives are a macro or an `if` at every one of its call
-sites in the codec — where the density of them is exactly what makes forgetting
-one likely, and a forgotten one is a silent buffer overrun rather than a
-compile error.
+The early return is the point: a function cannot return from its caller, so the
+alternatives are a macro or an `if` at every call site in the codec. Their
+density is what makes forgetting one likely, and a forgotten one is a silent
+buffer overrun rather than a compile error.
 
-`MQTT_TRY` and `MQTT_READ` used to sit beside it and were deleted for having no
-uses. This one is load-bearing.
+`MQTT_TRY` and `MQTT_READ` sat beside it and were deleted for having no uses.
 
 ---
 
@@ -169,7 +160,7 @@ The nearest available proxies all pass and all gate in CI:
 - **clang-tidy** with `bugprone`, `cert`, `clang-analyzer`, `concurrency`,
   `misc`, `performance`, `portability`, `readability` and `cppcoreguidelines`
   enabled: **zero findings**, gating. `cppcoreguidelines` in particular overlaps
-  substantially with the AUTOSAR C++14 lineage that fed MISRA C++:2023. Fifteen
+  substantially with the AUTOSAR C++14 lineage that fed MISRA C++:2023. 21
   checks are disabled, each with its reasoning recorded in `.clang-tidy` and
   `docs/static-analysis.md`.
 - **CodeQL** `security-and-quality`, weekly and on every push.
@@ -179,9 +170,9 @@ The nearest available proxies all pass and all gate in CI:
   in the archive — checked on the host and, since the cross job landed, on the
   target archive too.
 
-None of that is MISRA compliance. All of it is evidence that a MISRA assessment
-would not be starting from a backlog of hundreds of findings, which is the
-usual reason such an assessment gets abandoned.
+None of that is MISRA compliance. It is evidence that an assessment would not
+start from a backlog of hundreds of findings, which is the usual reason such an
+assessment is abandoned.
 
 ## If you need actual compliance
 
