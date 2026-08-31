@@ -49,6 +49,7 @@ PROSE_PAGES = [
     ("docs/comparison-with-paho.md", "Comparison-with-Paho", "Comparison with Paho"),
     ("docs/static-analysis.md", "Static-Analysis", "Static analysis"),
     ("docs/misra.md", "MISRA", "MISRA C++:2023"),
+    ("CHANGELOG.md", "Changelog", "Changelog"),
     ("NOTICE.md", "Notices", "Licence and notices"),
 ]
 

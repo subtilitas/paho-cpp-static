@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - README.md
+      - CHANGELOG.md
       - NOTICE.md
       - docs/**
       - include/**
@@ -21,6 +22,7 @@ on:
   pull_request:
     paths:
       - README.md
+      - CHANGELOG.md
       - NOTICE.md
       - docs/**
       - include/**
