@@ -66,7 +66,6 @@ const char* to_string(Error e) noexcept
         case Error::BufferTooSmall:     return "BufferTooSmall";
         case Error::TxQueueFull:        return "TxQueueFull";
         case Error::NoInflightSlot:     return "NoInflightSlot";
-        case Error::NoInboundSlot:      return "NoInboundSlot";
         case Error::NoSubscriptionSlot: return "NoSubscriptionSlot";
         case Error::NoPendingAckSlot:   return "NoPendingAckSlot";
         case Error::PayloadTooLarge:    return "PayloadTooLarge";

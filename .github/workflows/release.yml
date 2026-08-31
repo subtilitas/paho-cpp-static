@@ -179,7 +179,7 @@ jobs:
           set -euo pipefail
           name="paho-cpp-static-${{ needs.prepare.outputs.version }}-${{ matrix.name }}"
 
-          cp LICENSE NOTICE.md README.md SECURITY.md stage/
+          cp LICENSE NOTICE.md README.md SECURITY.md CHANGELOG.md stage/
 
           # The archive carries its own bill of materials. An archive that has
           # been copied into an internal mirror, renamed, and rediscovered two

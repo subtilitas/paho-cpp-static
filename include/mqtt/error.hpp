@@ -64,7 +64,6 @@ enum class Error : uint8_t
     BufferTooSmall,       ///< Serialization target ran out of room.
     TxQueueFull,          ///< Outgoing byte queue cannot accept the packet right now.
     NoInflightSlot,       ///< All QoS>0 outbound slots are occupied.
-    NoInboundSlot,        ///< All QoS 2 inbound tracking slots are occupied.
     NoSubscriptionSlot,   ///< Subscription table is full.
     NoPendingAckSlot,     ///< SUBSCRIBE/UNSUBSCRIBE ack tracking table is full.
     PayloadTooLarge,      ///< Message exceeds the configured persisted-message size.
