@@ -12,7 +12,7 @@ refuses a tag that disagrees with it, and `tools/pins.py` prints what is
 pinned, so the number here is a record rather than a second declaration that
 could drift.
 
-## [0.6.0] — unreleased
+## [0.6.0] — 2026-08-31
 
 ### Removed
 
