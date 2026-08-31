@@ -228,17 +228,36 @@ linked at all.
 
 ### Coverage
 
-Measured by `gcovr` on every push and published to
-[Codecov](https://codecov.io/gh/subtilitas/paho-cpp-static) — the badge above is
-the live figure, which is why no number is written out here. Scope is
-`include/mqtt/` and `src/` only; tests, examples and the fetched ETL checkout are
-excluded, since counting them would flatter the number rather than measure it.
+<!-- coverage:start -->
+| Metric | Covered | Total | Measured |
+|---|---|---|---|
+| Lines | 1193 | 1266 | 94.2% |
+| Branches | 836 | 950 | 88.0% |
+| Functions | 398 | 482 | 82.6% |
+<!-- coverage:end -->
 
-**The badge reads lower than `gcovr` reports, and both are right.** gcovr counts
-a line as covered if it executed at all. Codecov additionally tracks *partials* —
-a line whose branches were only partly taken, such as an `if` that was never
-false — and a partial is not a hit. So a guard clause that every test walks past
-but none trips counts once for gcovr and against you on the badge. The badge is
+Measured by `gcovr` on every push and also published to
+[Codecov](https://codecov.io/gh/subtilitas/paho-cpp-static). The table is
+written by `tools/coverage.py`, and CI re-measures and runs
+`tools/coverage.py --check`, which fails the build when these figures drift
+from what the suite actually does. So the numbers are checked rather than
+asserted, and nothing rewrites this file behind you — a README that edits
+itself is one nobody reads the diff of, and a coverage drop is exactly the
+diff worth reading. Scope is `include/mqtt/` and `src/` only; tests, examples
+and the fetched ETL checkout are excluded, since counting them would flatter
+the number rather than measure it.
+
+Function coverage is reported but deliberately not gated. The suite
+instantiates the client at several configurations, and each instantiation
+creates its own set of template functions — so testing *more* configurations
+lowers that percentage while raising every other one.
+
+**The Codecov badge reads lower than `gcovr` reports, and both are right.**
+gcovr counts a line as covered if it executed at all. Codecov additionally
+tracks *partials* — a line whose branches were only partly taken, such as an
+`if` that was never false — and a partial is not a hit. So a guard clause that
+every test walks past but none trips counts once for gcovr and against you on
+the badge. The badge is
 therefore closer to branch coverage than to line coverage, and it is the harder
 number to move; chase it by testing the untaken side of a condition, not by
 executing more lines.
@@ -261,8 +280,13 @@ Reproduce it locally:
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DMQTT_COVERAGE=ON -DMQTT_BUILD_EXAMPLES=OFF
 cmake --build build --parallel
 ctest --test-dir build
-gcovr --root . --filter include/mqtt/ --filter src/ --print-summary
+gcovr --root . --filter include/mqtt/ --filter src/ --print-summary \
+      --json-summary coverage.json
+python3 tools/coverage.py --summary coverage.json --check
 ```
+
+`--check` is what CI runs. Use `--write` instead to update the table above
+after a change that legitimately moves it.
 
 Also verified:
 

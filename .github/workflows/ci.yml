@@ -12,8 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Pinned so the FetchContent cache key below actually means something. Keep in
-  # step with the GIT_TAG in CMakeLists.txt.
   # The ETL commit CMakeLists.txt pins. Not a tag: a tag can be moved,
   # and a cache key that only names one would keep serving a stale
   # checkout of the previous content. tools/pins.py --check enforces
@@ -164,9 +162,17 @@ jobs:
             --xml-pretty --output coverage.xml \
             --html-details coverage-html/index.html \
             --txt coverage.txt \
+            --json-summary coverage.json \
             --print-summary \
             --fail-under-line ${{ env.COVERAGE_MIN_LINE }} \
             --fail-under-branch ${{ env.COVERAGE_MIN_BRANCH }}
+
+      # The floor above is the gate; this is the README staying truthful. They
+      # answer different questions -- "is it good enough" and "does the
+      # repository still say what is true" -- so a change that moves coverage
+      # legitimately still has to record it rather than only clear the bar.
+      - name: Check the README coverage figures
+        run: python3 tools/coverage.py --summary coverage.json --check
 
       # Runs even when the floor check above failed, so the PR shows what the
       # numbers actually were rather than just that a threshold was missed.
