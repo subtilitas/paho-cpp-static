@@ -10,7 +10,7 @@ costs a minor version rather than a major one.
 refuses a tag that disagrees with it. The entries here are a record, not a
 second declaration that could drift.
 
-## Unreleased
+## [0.6.1] — 2026-09-01
 
 ### Fixed
 
