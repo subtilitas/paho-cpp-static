@@ -5,16 +5,13 @@ Three analysers run in CI. clang-tidy and clang-format are in
 `.github/workflows/codeql.yml` and is **advisory** — it reports to the Security
 tab and does not fail the build.
 
-They are in separate files so that each badge means one thing: a red CodeQL
-badge is a security finding, not somebody forgetting to run the formatter.
+They are in separate files so each badge means one thing: a red CodeQL badge is
+a security finding, not somebody forgetting to run the formatter.
 
-That is deliberate. A check that fails on day one for hundreds of pre-existing
-reasons does not get fixed; it gets ignored, and an ignored red check is worse
-than no check, because it hides the next real failure. So each analyser starts
-by reporting, its findings get triaged, and it becomes blocking once the
-backlog is empty and staying that way is a matter of not regressing.
-
-This page records where that triage has got to.
+Each analyser starts by reporting, its findings are triaged, and it becomes
+blocking once the backlog is empty. A check that fails on day one for hundreds
+of pre-existing reasons gets ignored, and an ignored red check hides the next
+real failure. This page records where that triage has got to.
 
 | Analyser | State | Findings | Blocker before gating |
 |---|---|---|---|
@@ -43,11 +40,10 @@ policy, not a workflow detail.
 
 `.clang-tidy` enables `bugprone`, `cert`, `clang-analyzer`, `concurrency`,
 `misc`, `performance`, `portability`, `readability` and `cppcoreguidelines`,
-then switches off fifteen checks that only restate this project's deliberate
-choices. Each exclusion has its reasoning written next to it in the config; the
-short version is that a wire-protocol implementation is *made of* magic
-numbers, pointer arithmetic and fixed C arrays, and a check that objects to
-those is not telling us anything.
+then switches off 21 checks that only restate this project's deliberate
+choices. Each exclusion carries its reasoning in the config; the short version
+is that a wire-protocol implementation is *made of* magic numbers, pointer
+arithmetic and fixed C arrays.
 
 That takes the count from **617 to 15**, which is the difference between a
 report somebody reads and one nobody does.
@@ -73,9 +69,9 @@ finding is a regression in the change that introduced it.
   longer slice it. `Client` deletes all four and defaults its destructor; it
   holds references and moving one mid-session would leave the transport
   talking to a corpse.
-- `performance-enum-size` — `Error` was `int16_t` for twenty-three values. Now
-  `uint8_t`, which packs better against the neighbouring members and takes
-  **eight bytes off every configuration**: `Client<DefaultConfig>` went 4608 →
+- `performance-enum-size` — `Error` was `int16_t` for a couple of dozen values
+  (22 today). Now `uint8_t`, which packs better against the neighbouring members
+  and takes **eight bytes off every configuration**: `Client<DefaultConfig>` went 4608 →
   4600, and the small and large profiles likewise.
 
   This is an API-visible change to a public enum, and it rests on two things.
@@ -101,43 +97,27 @@ finding is a regression in the change that introduced it.
 
 ## clang-format
 
-Resolved. The tree is formatted and the check gates, so it cannot drift again.
+Resolved. The tree is formatted, the check gates, and it cannot drift again.
 
-The problem was not that the code was untidy: **every one of the 29 files
-differed from the committed `.clang-format`**, about 1360 lines, because the
-config had been added and never applied. It described an intention. Three of
-its rules disagreed with the entire codebase, which is why reformatting first
-would have been the wrong move — it would have baked in the wrong answer and
-produced a second churn commit later.
+The problem was not untidy code: **every one of the 29 `.cpp`/`.hpp` files then
+in the tree differed from the committed `.clang-format`**, about 1360 lines,
+because the config had been added and never applied. Three of its rules
+disagreed with the entire codebase, so reformatting first would have baked in
+the wrong answer and produced a second churn commit later. What it took:
 
-What it took, in order:
+| Rule | Problem | Resolution |
+|---|---|---|
+| `BreakBeforeBraces: Allman` | put the brace of `namespace mqtt {` on its own line, which no file does. Allman is a preset with no per-member override | spelled out as `Custom` with `AfterNamespace: false`, every other value copied from Allman verbatim. ~160 lines of the diff |
+| `AllowShortFunctionsOnASingleLine: Inline` | expanded `at_least_one`, `utf8_size`, `valid_qos` and the `operator new` overloads, all written on one line | `All`, which reproduces what is there and — checked file by file — collapses nothing that was written expanded |
+| Alignment clang-format cannot express | the `to_string` switch tables, the flag-bit assignments in `FixedHeader::to_byte`, the golden wire-byte tables in the codec tests. Those columns are the documentation | marked `// clang-format off`. The directive must be exactly that — a trailing explanation on the same line silently makes it an ordinary comment, so the reason goes on the line above |
 
-1. **`BreakBeforeBraces: Allman`** put the brace of `namespace mqtt {` on its
-   own line. No file does that. Allman is a preset with no way to override a
-   single member, so it is now spelled out as `Custom` with
-   `AfterNamespace: false` and every other value copied from Allman verbatim.
-   Worth roughly 160 lines of the diff.
+Then `clang-format -i` over everything as its own commit, touching nothing else,
+so it can be skipped when reading history or bisecting.
 
-2. **`AllowShortFunctionsOnASingleLine: Inline`** expanded `at_least_one`,
-   `utf8_size`, `valid_qos` and the `operator new` overloads, all of which are
-   written on one line. `All` reproduces what is already there and — checked
-   file by file — collapses nothing that was written expanded.
-
-3. **Deliberate alignment clang-format cannot express** is marked
-   `// clang-format off`: the `to_string` switch tables, the flag-bit
-   assignments in `FixedHeader::to_byte`, and the golden wire-byte tables in
-   the codec tests. Those columns are the documentation; collapsing them loses
-   the thing being documented. Note that the directive must be exactly
-   `// clang-format off` — a trailing explanation on the same line silently
-   makes it an ordinary comment, so the reason goes on the line above.
-
-Then `clang-format -i` over everything, as its own commit touching nothing
-else, so it can be skipped when reading history or bisecting.
-
-Two things checked before and after, because a whole-tree reformat is
-otherwise an act of faith: the residual difference is zero, and the tree still
-builds clean under `-Werror`, passes all tests, stays clean under ASan and
-UBSan, keeps `sizeof(Client<Cfg>)` unchanged, and holds its coverage floor.
+Checked before and after, since a whole-tree reformat is otherwise unverifiable:
+the residual difference is zero, and the tree still builds clean under
+`-Werror`, passes all tests, stays clean under ASan and UBSan, keeps
+`sizeof(Client<Cfg>)` unchanged, and holds its coverage floor.
 
 `AlignConsecutiveDeclarations: Consecutive` was left alone deliberately. It
 occasionally pads a declaration oddly, but turning it off costs more churn than

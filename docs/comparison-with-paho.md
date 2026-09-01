@@ -1,10 +1,9 @@
 # Comparison with Eclipse Paho MQTT C
 
-This project exists because Paho MQTT C is built for a different machine than
-the one many embedded projects ship on. None of what follows is a criticism of
-Paho — it is a good library, and the choices it makes are the right ones for
-hosted systems with a heap, threads and an OS. They are simply not available on
-a Cortex-M0 with 32 KB of RAM and a watchdog.
+Paho MQTT C targets a different machine than many embedded projects ship on.
+None of what follows is a criticism: its choices are the right ones for hosted
+systems with a heap, threads and an OS. Those are simply not available on a
+Cortex-M0 with 32 KB of RAM and a watchdog.
 
 ## At a glance
 
@@ -20,12 +19,12 @@ a Cortex-M0 with 32 KB of RAM and a watchdog.
 | Transports | TCP, TLS, WebSocket, HTTP/SOCKS proxy | whatever you implement |
 | Persistence | in-memory or on-disk, pluggable | none |
 | API surface | `MQTTClient` (sync) + `MQTTAsync` | one `Client` |
-| Source size | ~35 kLOC | ~2.4 kLOC library, ~6.3 kLOC with tests |
+| Source size | ~35 kLOC | ~2.2 kLOC library, ~5.2 kLOC with tests |
 | Error reporting | `int` codes + global heap state | `Error` enum, `Result<T>` |
 
 ## Allocation, concretely
 
-The difference is easiest to see by counting.
+Counting is the clearest way to show the difference.
 
 **Paho, receiving one QoS 1 PUBLISH.** `MQTTPacket_Factory` allocates the
 `Publish` struct; `readUTFlen` allocates the topic; the payload is allocated and
@@ -49,11 +48,10 @@ buffer. Then the retry path may allocate again.
 | Publish QoS 0 | the transmit FIFO |
 | Publish QoS 1/2 | one preallocated inflight slot + the transmit FIFO |
 
-Zero allocations, because nothing new is ever needed. The memory was committed
-when you picked the config. The question at run time is only whether a slot is
-free, and if it is not you get `Error::NoInflightSlot` immediately and can
-decide what to do — rather than an allocation failure surfacing three layers
-down at the least convenient moment.
+Zero allocations, because nothing new is needed: the memory was committed when
+the config was picked. The only run-time question is whether a slot is free, and
+if it is not the caller gets `Error::NoInflightSlot` immediately rather than an
+allocation failure three layers down.
 
 This is enforced, not asserted: `tests/test_no_alloc.cpp` replaces global
 `operator new` with a counter and drives a full session through it.
@@ -61,19 +59,15 @@ This is enforced, not asserted: `tests/test_no_alloc.cpp` replaces global
 ## Threading
 
 Paho's async client runs a background thread per client plus a shared socket
-thread, coordinated with mutexes and condition variables, and invokes your
-callbacks from those threads. On a hosted system that is convenient. On a small
-target it means an RTOS, two more stacks to size, priority inversion to think
-about, and callbacks arriving on a thread that may not be allowed to touch your
-application state.
+thread, coordinated with mutexes and condition variables, and invokes callbacks
+from those threads. On a small target that means an RTOS, two more stacks to
+size, priority inversion to consider, and callbacks arriving on a thread that
+may not be allowed to touch application state.
 
-Here there are no threads. `step()` does everything and returns, callbacks run
-on your thread inside `step()`, and you can reason about the whole client with a
-single-threaded mental model. If you want it on its own RTOS task, put it on one
-— but that is your decision, not the library's.
-
-The cost is that you must call `step()` regularly. In practice this is what
-embedded code does anyway.
+Here there are no threads. `step()` does everything and returns, and callbacks
+run on the calling thread inside it, so the whole client fits a single-threaded
+mental model. Putting it on its own RTOS task remains possible; it is just not
+imposed. The cost is that `step()` must be called regularly.
 
 ## Bitfields on the wire
 
@@ -93,8 +87,8 @@ typedef union {
 ```
 
 Bitfield layout within a storage unit is implementation-defined in C and C++.
-This works on the compilers Paho targets, but it is a portability hazard that
-has to be rediscovered on each new toolchain.
+This works on the compilers Paho targets, but the assumption must be re-verified
+on each new toolchain.
 
 `FixedHeader` here uses explicit shifts and masks, so the same code produces the
 same bytes on every compiler and target, and `from_byte()` additionally
@@ -111,16 +105,16 @@ complexity and footprint. Most embedded deployments use 3.1.1. If you need v5,
 the codec is structured so properties can be added as a fixed-capacity array
 without disturbing the rest.
 
-**WebSocket.** Framing, masking, HTTP upgrade, base64 and SHA-1 — Paho spends
-about 45 kB of source on it. It exists to get MQTT through corporate proxies,
-which is rarely the constraint on a device with a cellular modem. If you need
-it, it belongs in a `Transport` wrapper, not in the client.
+**WebSocket.** Framing, masking, HTTP upgrade, base64 and SHA-1 — about 45 kB of
+Paho's source. It exists to get MQTT through corporate proxies, rarely the
+constraint on a device with a cellular modem. It belongs in a `Transport`
+wrapper rather than in the client.
 
-**Persistence.** Paho can spill inflight messages to disk so they survive a
-process restart. Most microcontrollers have no filesystem, and those that do
-want to control flash wear themselves. The inflight window here is RAM-backed
-and survives reconnects but not resets. If you need reset-durable QoS, wrap
-`publish()` in your own journal against whatever storage you actually have.
+**Persistence.** Paho can spill inflight messages to disk to survive a process
+restart. Most microcontrollers have no filesystem, and those that do want to
+control flash wear themselves. The inflight window here is RAM-backed: it
+survives reconnects, not resets. For reset-durable QoS, wrap `publish()` in a
+journal against whatever storage the device has.
 
 **HTTP/SOCKS proxy support.** Same reasoning as WebSocket: a transport concern.
 
@@ -149,11 +143,11 @@ PUBREL/SUBSCRIBE/UNSUBSCRIBE, QoS 3, DUP on a QoS 0 PUBLISH, reserved bits set
 in CONNACK, and server-to-client packets that only make sense in the other
 direction.
 
-The reasoning: on a device that has to stay up unattended, a desynchronised
-stream is far more likely than a broker that means something clever by a
-non-canonical encoding. Failing fast and reconnecting produces a clean session;
-guessing produces corrupted messages delivered to the application, which is much
-harder to diagnose from the field.
+On a device that must stay up unattended, a desynchronised stream is far more
+likely than a broker meaning something clever by a non-canonical encoding.
+Failing fast and reconnecting produces a clean session; guessing produces
+corrupted messages delivered to the application, which is much harder to
+diagnose from the field.
 
 ## When to use Paho instead
 

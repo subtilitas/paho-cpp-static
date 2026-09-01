@@ -1,8 +1,8 @@
 # Configuration and sizing
 
 Everything the client uses is sized at compile time from a config type. There
-are no run-time knobs, no hidden pointers and no growth. `sizeof(Client<Cfg>)`
-is the whole story, and you can read it off a linker map.
+are no run-time knobs, no hidden pointers and no growth: `sizeof(Client<Cfg>)`
+is the whole cost, readable from a linker map.
 
 ## Declaring a config
 
@@ -20,9 +20,8 @@ struct MyConfig : mqtt::DefaultConfig
 mqtt::Client<MyConfig> client{transport, clock};
 ```
 
-Anything you do not override keeps the default. `ConfigCheck<Cfg>` is
-instantiated by `Client` and turns nonsensical combinations into build errors
-rather than 3am field failures.
+Anything not overridden keeps its default. `ConfigCheck<Cfg>`, instantiated by
+`Client`, turns nonsensical combinations into build errors.
 
 ## The knobs
 
@@ -32,152 +31,148 @@ Must hold the largest inbound packet **whole**, including its fixed header.
 Packets are parsed in place, which is what makes `Message::topic` and
 `Message::payload` views instead of copies.
 
-A packet larger than this ends the connection with `Error::PacketTooLarge`. It
-cannot be handled any other way — there is nowhere to put it, and silently
-truncating would corrupt the stream.
+A larger packet ends the connection with `Error::PacketTooLarge`. There is
+nowhere else to put it, and truncating would corrupt the stream.
 
-Size it as: longest topic you subscribe to + largest payload you will receive +
-~8 bytes of framing. Do not forget **retained messages**, which arrive
-immediately on subscribe and are often the largest thing a broker sends you.
+Size it as: longest topic subscribed to + largest payload received + ~8 bytes of
+framing. Include **retained messages**, which arrive immediately on subscribe
+and are often the largest thing a broker sends.
 
 ### `tx_buffer_size` — default 1024
 
-The outbound byte FIFO. Must be at least as large as your biggest single packet;
-beyond that it determines how much you can queue before `publish()` starts
-returning `Error::TxQueueFull`.
+The outbound byte FIFO. Must be at least as large as the biggest single packet;
+beyond that it sets how much can be queued before `publish()` returns
+`Error::TxQueueFull`. A larger transmit buffer is the cheapest way to ride out a
+briefly stalled link. `tx_pending()` reports how full it is.
 
-A larger transmit buffer is the cheapest way to ride out a slow or briefly
-stalled link. `tx_pending()` tells you how full it is, which makes a decent
-back-pressure signal for your application.
-
-Protocol acknowledgements need room here too. When there is none, the client
+Protocol acknowledgements need room here too. With none available the client
 defers the acknowledgement rather than dropping the connection: an inbound QoS 1
 or QoS 2 message is left both unacknowledged **and** undelivered, so the broker
-retransmits it and delivery happens on the retry. That keeps the guarantee
-intact — acknowledging a message you could not deliver would lose it, and
-delivering one you could not acknowledge would duplicate it.
+retransmits and delivery happens on the retry. Acknowledging a message that
+could not be delivered would lose it; delivering one that could not be
+acknowledged would duplicate it.
 
-`tx_backpressure_count()` counts these deferrals. It is a tuning signal, not an
-error: a persistently rising value means `tx_buffer_size` is undersized for your
-traffic, or `step()` is not being called often enough to drain it.
+`tx_backpressure_count()` counts these deferrals — a tuning signal, not an
+error. A persistently rising value means `tx_buffer_size` is undersized for the
+traffic, or `step()` is not called often enough to drain it.
 
 ### `max_topic_len` — default 64
 
-Longest topic name or filter, in bytes, excluding any NUL. Applies both to
-topics you publish to and filters you subscribe to. Costs
-`max_subscriptions × max_topic_len` bytes in the subscription table, since
-filters are copied there.
+Longest topic name or filter in bytes, excluding any NUL, for both publishing
+and subscribing. Filters are copied into the subscription table, so this is a
+multiplier on its cost — see `max_subscriptions`.
 
 ### `max_client_id_len` / `max_username_len` / `max_password_len`
 
-Validation limits for `connect()`. They cost nothing at run time — the CONNECT
-packet is serialized straight into the transmit queue and none of these strings
-are retained — but they give you an early, specific `Error::InvalidArgument`
-instead of a mysterious rejection from the broker.
+Validation limits for `connect()`. They cost nothing at run time, since the
+CONNECT packet is serialized straight into the transmit queue and none of these
+strings are retained. They buy an early, specific `Error::InvalidArgument`
+instead of a rejection from the broker a round trip later.
 
 ### `max_inflight_out` — default 4
 
-The outbound QoS > 0 window: how many QoS 1 or QoS 2 publishes can be in flight
+The outbound QoS > 0 window: how many QoS 1 or QoS 2 publishes may be in flight
 at once. `publish()` returns `Error::NoInflightSlot` when it is full.
 
-Set it to `0` to forbid QoS > 0 publishing entirely and reclaim all of the
-persisted-message storage. A pure telemetry node that only publishes QoS 0 saves
-real memory this way.
+Set it to `0` to forbid QoS > 0 publishing and reclaim all persisted-message
+storage. A telemetry-only node publishing at QoS 0 saves real memory this way.
 
-Sizing: round-trip time to the broker divided by your publish interval, plus
+Sizing: round-trip time to the broker divided by publish interval, plus
 headroom. A sensor publishing every 5 s to a broker 200 ms away needs 1. A
-gateway bursting 20 messages at once needs 20, or it needs to handle
-`NoInflightSlot` by retrying later.
+gateway bursting 20 messages at once needs 20, or must handle
+`NoInflightSlot` by retrying.
 
 ### `max_persisted_msg_size` — default 256
 
 Bytes reserved **per inflight slot** to hold the serialized packet for
-retransmission. This is the one genuinely expensive setting:
+retransmission:
 
 ```
 inflight storage = max_inflight_out × max_persisted_msg_size
 ```
 
-Defaults: 4 × 256 = 1 KB, which is most of `sizeof(Client<DefaultConfig>)`.
+At the defaults that is 4 × 256 = 1024 bytes, about 22% of
+`sizeof(Client<DefaultConfig>)` — the largest single item after the two 1 KB
+buffers.
 
-The trade-off is deliberate. Because the client owns a serialized copy, it can
-retransmit with DUP set without your application keeping the payload alive, and
-without an allocation. The cost is that a QoS > 0 publish which does not fit is
+The trade-off is deliberate: because the client owns a serialized copy, it can
+retransmit with DUP set without the application keeping the payload alive and
+without allocating. The cost is that a QoS > 0 publish which does not fit is
 rejected with `Error::PayloadTooLarge`.
 
-It must accommodate: topic + payload + 2-byte packet id + ~5 bytes of framing.
-QoS 0 publishes bypass this entirely and are bounded only by `tx_buffer_size`,
-so large-but-unimportant messages can still go out cheaply.
+It must accommodate topic + payload + 2-byte packet id + ~5 bytes of framing.
+QoS 0 publishes bypass it entirely and are bounded only by `tx_buffer_size`, so
+large-but-unimportant messages still go out cheaply.
 
 Once PUBREC arrives the slot's buffer is reused for the much smaller PUBREL, so
 the footprint stays flat across the QoS 2 handshake rather than doubling.
 
 ### `max_inflight_in` — default 4
 
-Packet ids of inbound QoS 2 messages received but not yet released by PUBREL.
-Used for duplicate suppression, at 2 bytes each — cheap.
+Packet ids of inbound QoS 2 messages received but not yet released by PUBREL,
+for duplicate suppression, at 2 bytes each.
 
 If it fills, an incoming QoS 2 message is neither delivered nor acknowledged,
 leaving it with the broker to retransmit, and `inbound_overflow_count()`
 increments. The connection is deliberately *not* dropped: doing so would hand a
 peer a trivial way to knock the device offline. A non-zero count means this is
-undersized for your broker's delivery rate.
+undersized for the broker's delivery rate.
 
 ### `max_subscriptions` — default 8
 
-Active subscriptions. Retained across reconnects and re-sent automatically when
+Active subscriptions, retained across reconnects and re-sent automatically when
 CONNACK reports `session_present = false`. `subscribe()` returns
 `Error::NoSubscriptionSlot` when full.
 
 Retention does not depend on `clean_session`. That flag governs the state the
-*broker* keeps; the client's own table is its record of what the application
-asked for, and it is the only thing that can rebuild the session, since the
-caller's filter strings are copied in and never referenced again. `unsubscribe()`
-is how you forget a filter, and a filter the broker refuses in SUBACK is dropped
-automatically.
+*broker* keeps; the client's table is its own record of what the application
+asked for, and the only thing that can rebuild the session, since the caller's
+filter strings are copied in and never referenced again. `unsubscribe()` forgets
+a filter, and a filter the broker refuses in SUBACK is dropped automatically.
 
-Costs roughly `max_subscriptions × (max_topic_len + 24)` bytes.
+Each entry costs `max_topic_len + 64` bytes — the copied filter plus the
+delegate, ids and flags. At the defaults, 8 × 128 = 1024 bytes.
 
-Use wildcards to keep this small: one subscription to `sensors/+/cmd` beats
-thirty individual filters, and the client's own matcher routes them to the right
-handler.
+Wildcards keep this small: one subscription to `sensors/+/cmd` beats thirty
+individual filters, and the client's matcher routes them to the right handler.
 
 ### `max_pending_acks` — default 4
 
 SUBSCRIBE and UNSUBSCRIBE requests awaiting their ack. Rarely needs to exceed 2
-unless you subscribe to many filters in a burst at startup. `subscribe()` and
-`unsubscribe()` return `Error::NoPendingAckSlot` when full — retry on the next
-loop iteration.
+unless many filters are subscribed in a burst at startup. Both calls return
+`Error::NoPendingAckSlot` when full; retry on the next loop iteration.
 
 ### `max_topics_per_request` — default 4
 
 Filters permitted in a single SUBSCRIBE or UNSUBSCRIBE packet, and the batch
-size used for automatic re-subscription after a lost session. Larger batches
-mean fewer round trips at startup; smaller ones spread the transmit-queue load.
+size for automatic re-subscription after a lost session. Larger batches mean
+fewer round trips at startup; smaller ones spread the transmit-queue load.
 
 ### `retry_interval_ms` — default 20000
 
-How long to wait before retransmitting an unacknowledged QoS > 0 packet with DUP
-set. `0` disables timed retransmission, in which case messages are only re-sent
-after a reconnect.
+How long before retransmitting an unacknowledged QoS > 0 packet with DUP set.
+`0` disables timed retransmission, leaving messages to be re-sent only after a
+reconnect.
 
-Do not set this below your round-trip time, or you will retransmit messages the
-broker has already acknowledged and waste both airtime and inflight slots. On a
+Do not set this below the round-trip time, or messages the broker has already
+acknowledged get retransmitted, wasting airtime and inflight slots. On a
 cellular link, 30–60 s is more realistic than the default.
 
-Independently of this timer, everything still inflight is retransmitted
-immediately after a successful CONNACK.
+Independently of this timer, everything inflight is retransmitted immediately
+after a successful CONNACK.
 
 ### `connect_timeout_ms` — default 30000
 
-Deadline covering the whole handshake: transport connect plus CONNACK. On
-expiry the session ends with `Error::ConnectTimeout`.
+Deadline covering the whole handshake: transport connect plus CONNACK. On expiry
+the session ends with `Error::ConnectTimeout`.
 
-## Worked examples
+## Worked profiles
+
+Figures are x86-64 GCC at `-Os`, measured with `sizeof()`.
 
 ### Constrained sensor node — telemetry only
 
-QoS 0 publishes, one wildcard subscription for commands, tiny messages.
+QoS 0 publishes, one wildcard subscription for commands, small messages.
 
 ```cpp
 struct SensorConfig : mqtt::DefaultConfig
@@ -195,11 +190,11 @@ struct SensorConfig : mqtt::DefaultConfig
 };
 ```
 
-Well under 1 KB.
+**1064 bytes.**
 
 ### Reliable sensor node
 
-QoS 1 telemetry that must not be lost across a flaky link.
+QoS 1 telemetry that must survive a flaky link.
 
 ```cpp
 struct ReliableConfig : mqtt::DefaultConfig
@@ -214,8 +209,8 @@ struct ReliableConfig : mqtt::DefaultConfig
 };
 ```
 
-Roughly 3.5 KB, of which 1 KB is the retransmission store — that is the price of
-the delivery guarantee, and it is visible rather than hidden in a heap.
+**3624 bytes**, of which 1024 is the retransmission store — the price of the
+delivery guarantee, visible rather than hidden in a heap.
 
 ### Gateway
 
@@ -236,18 +231,21 @@ struct GatewayConfig : mqtt::DefaultConfig
 };
 ```
 
-Roughly 21 KB. Fine on anything with external RAM, and still entirely static.
+**23 456 bytes.** Fine on anything with external RAM, and still entirely static.
+
+`tests/test_config_profiles.cpp` instantiates and exercises each of these, so
+the figures above are compiled rather than remembered.
 
 ## Measuring
 
-Print it, or read the map file:
+Assert the budget in your own build:
 
 ```cpp
 static_assert(sizeof(mqtt::Client<MyConfig>) <= 4096, "MQTT client budget exceeded");
 ```
 
-A `static_assert` in your build is the cheapest possible guard against someone
-quietly raising a buffer size past what the target can afford.
+That is the cheapest guard against someone quietly raising a buffer size past
+what the target can afford.
 
-To see where it goes, `tests/test_no_alloc.cpp` has a case that prints
-`sizeof()` for three configurations; adding yours to it takes one line.
+`tests/test_no_alloc.cpp` has a case that prints `sizeof()` for three
+configurations; adding yours takes one line.
