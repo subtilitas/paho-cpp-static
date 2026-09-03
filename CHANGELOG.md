@@ -14,6 +14,53 @@ version rather than a major one. None of those guarantees applied to them.
 refuses a tag that disagrees with it. The entries here are a record, not a
 second declaration that could drift.
 
+## [1.0.0-rc3] — 2026-09-03
+
+Three defects in the code rc2 added, found by re-running the same adversarial
+suite against the fixes themselves. Both rc1 findings stay closed.
+
+### Fixed
+
+- **A handler that ends a session and starts another wrote the new CONNECT to
+  the closed transport.** `abort()` then `connect()` from a handler is how an
+  application reacts to a reconfigure command, and rc2 made ending a session
+  from a handler supported rather than merely tolerated. But
+  `transport_.connect()` runs only at the top of `step()`, while handlers run
+  inside `pump_rx()` — so the rest of that pass operated on a transport that
+  `close()` had torn down. Against a transport that refuses writes after
+  `close()`, as a socket does, the new session died before its CONNECT left the
+  queue: `on_disconnect` fired twice for one application action, and `step()`
+  reported `TransportFailure`.
+
+  `pump_rx()` and `step_once()` both stop when a handler has left the client in
+  `Connecting`. The next `step()` starts at the top and establishes the
+  transport.
+
+  rc2's own fix opened this path: `drain_rx` returns `last_error_` when it finds
+  the buffer moved under it, and `connect()` resets `last_error_` to `Ok`, so
+  the pass continued instead of stopping.
+- **`dispatch()` kept delivering after a handler ended the session.** Two
+  filters can match one message, and the handlers after the one that called
+  `abort()` were told about a message that arrived on a connection which no
+  longer exists — every client call they made on the strength of it refused
+  with `NotConnected`. The fan-out now stops. The documented promise gains its
+  exception: delivery to each matching handler, in table order, until one ends
+  the session.
+- **`step()`'s contract did not admit `Error::Reentrant`.** It documented that
+  any value other than `Ok` means the session has ended and the same value went
+  to `on_disconnect`; neither is true of the code rc2 appended. An outer loop
+  written the way the docstring invited — `if (step() != Ok) reconnect();` —
+  would tear down a healthy connection the first time a handler called `step()`.
+  Documented as the exception it is. `is_retryable()` deliberately does not
+  cover it: retrying is what a handler must not do.
+
+### Changed
+
+- The test binary is built with `-Werror` under `MQTT_WERROR`, as the library
+  already is. `-Wswitch` had reported a test whose handler silently did nothing
+  because an enumerator was missing from a switch, and a warning is easy to
+  scroll past in a wall of build output.
+
 ## [1.0.0-rc2] — 2026-09-03
 
 Three memory-safety defects and one silent delivery failure, all found in

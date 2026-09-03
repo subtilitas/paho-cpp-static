@@ -20,7 +20,7 @@ option(MQTT_FUZZ           "Build the libFuzzer targets (clang only)" OFF)
 # candidate cannot live there. It lives here instead, and the two are joined
 # into MQTT_VERSION_FULL below -- which is what a tag is checked against and
 # what names a release archive. Empty for a final release.
-set(MQTT_VERSION_PRERELEASE "rc2" CACHE STRING
+set(MQTT_VERSION_PRERELEASE "rc3" CACHE STRING
     "Prerelease suffix, e.g. rc1. Empty for a final release.")
 
 if(MQTT_VERSION_PRERELEASE)
