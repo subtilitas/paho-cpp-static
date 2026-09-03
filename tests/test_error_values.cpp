@@ -58,6 +58,8 @@ constexpr Pin kPinned[] = {
 
     {Error::TransportFailure, 20, "TransportFailure"},
     {Error::TransportClosed, 21, "TransportClosed"},
+
+    {Error::Reentrant, 22, "Reentrant"},
 };
 
 constexpr unsigned kCount = static_cast<unsigned>(sizeof(kPinned) / sizeof(kPinned[0]));
@@ -126,7 +128,7 @@ TEST(error_table_covers_the_whole_enumeration)
     // Guards the other direction: an enumerator added to error.hpp without a
     // row here. to_string() has a case for every real code and returns the
     // fallback otherwise, so the first unnamed value marks the end.
-    CHECK(kCount == 22u);
+    CHECK(kCount == 23u);
     CHECK(std::strcmp(to_string(static_cast<Error>(kCount)), "Unknown") == 0);
 
     // is_retryable() is part of the same contract -- it is spelled in terms of

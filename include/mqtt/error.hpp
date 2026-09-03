@@ -43,7 +43,7 @@ namespace mqtt {
 /// Every fallible operation in this library reports failure through this enum.
 /// There are no exceptions and no error globals.
 ///
-/// Fixed at one byte. There are 22 codes and room for two hundred more, and the
+/// Fixed at one byte. There are 23 codes and room for two hundred more, and the
 /// narrower type packs better next to the other small members: it takes eight
 /// bytes off sizeof(Client<DefaultConfig>) on a 64-bit build for nothing.
 ///
@@ -87,6 +87,9 @@ enum class Error : uint8_t
     // --- transport errors ---
     TransportFailure = 20,   ///< Underlying transport reported an unrecoverable error.
     TransportClosed  = 21,   ///< Peer closed the connection.
+
+    // --- misuse the library can detect ---
+    Reentrant = 22,   ///< step() was called from inside a handler. See Client::step().
 };
 
 /// Human-readable name for an error, for logging. Returns a static string;

@@ -78,6 +78,7 @@ const char* to_string(Error e) noexcept
         case Error::ConnectTimeout:     return "ConnectTimeout";
         case Error::TransportFailure:   return "TransportFailure";
         case Error::TransportClosed:    return "TransportClosed";
+        case Error::Reentrant:          return "Reentrant";
     }
     // clang-format on
     return "Unknown";

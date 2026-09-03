@@ -45,13 +45,56 @@ struct FuzzConfig : mqtt::DefaultConfig
 
 using FuzzClient = mqtt::Client<FuzzConfig>;
 
+/// The client the handlers act on, and what they should do when they run.
+///
+/// Handlers that do nothing leave a whole class of defect unreachable. A
+/// handler runs inside step(), part-way through draining the receive buffer and
+/// part-way through operations holding pointers into the client's own tables --
+/// so what a handler does to the client is an input, not a constant. Three
+/// memory-safety defects in 1.0.0-rc1 lived exactly there, and a fuzzer with
+/// inert handlers could not reach any of them however long it ran.
+///
+/// Only the actions the library documents as allowed are exercised.
+/// subscribe() and unsubscribe() from a handler are documented as forbidden --
+/// they mutate the subscription table mid-iteration -- so fuzzing them would be
+/// generating undefined behaviour rather than finding it.
+mqtt::Client<FuzzConfig>* g_client = nullptr;
+uint8_t                   g_action = 0;
+
+void act() noexcept
+{
+    if (g_client == nullptr)
+        return;
+
+    switch (g_action & 0x07u)
+    {
+        case 1: g_client->abort(); break;
+        case 2: (void)g_client->disconnect(); break;
+        case 3:
+            (void)g_client->publish(etl::string_view("f/x"), etl::string_view("y"),
+                                    mqtt::QoS::AtMostOnce);
+            break;
+        case 4:
+            // Documented as refused rather than recursive. Calling it is how that
+            // stays true.
+            (void)g_client->step();
+            break;
+        case 5:
+            (void)g_client->inflight_count();
+            (void)g_client->subscription_count();
+            (void)g_client->tx_pending();
+            break;
+        default: break;
+    }
+}
+
 /// Handlers must outlive the client, so they are file-scope rather than
-/// temporaries -- the same rule the library documents for any caller. They do
-/// nothing: the fuzzer is looking for what the parser does with the bytes, not
-/// for what a handler does with a message.
-auto on_message    = [](const mqtt::Message&) noexcept {};
-auto on_connect    = [](const mqtt::ConnackInfo&) noexcept {};
-auto on_disconnect = [](mqtt::Error) noexcept {};
+/// temporaries -- the same rule the library documents for any caller.
+auto on_message    = [](const mqtt::Message&) noexcept { act(); };
+auto on_connect    = [](const mqtt::ConnackInfo&) noexcept { act(); };
+auto on_disconnect = [](mqtt::Error) noexcept { act(); };
+auto on_delivery   = [](uint16_t) noexcept { act(); };
+auto on_suback     = [](uint16_t, etl::span<const uint8_t>) noexcept { act(); };
 
 }   // namespace
 
@@ -61,9 +104,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     fakes::FakeClock     clock;
     FuzzClient           client{transport, clock};
 
+    g_client = &client;
+    g_action = (size > 1) ? data[1] : 0u;
+
     client.on_message(on_message);
     client.on_connect(on_connect);
     client.on_disconnect(on_disconnect);
+    client.on_delivery_complete(on_delivery);
+    client.on_suback(on_suback);
 
     mqtt::ConnectOptions opts;
     opts.client_id     = etl::string_view("fuzz");
@@ -117,5 +165,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     client.disconnect();
     client.step();
 
+    // The client is about to go out of scope; the handlers must not outlive it.
+    g_client = nullptr;
     return 0;
 }

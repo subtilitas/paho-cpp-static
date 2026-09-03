@@ -2,8 +2,8 @@ Seed corpora for the fuzz targets.
 
 Each file is one input. They are not hand-written: they were produced by
 running the fuzzer and then minimised with `-merge=1`, which keeps only the
-inputs that reach coverage no other input does. Together they are a few
-kilobytes and cover 1187 edges in the client target and 38 in the codec target.
+inputs that reach coverage no other input does. Together they are 7968 bytes
+and cover 1452 edges in the client target and 38 in the codec target.
 
 They exist so that a short run finds regressions immediately rather than
 rediscovering the interesting shapes first. `ctest -L fuzz` replays them with
