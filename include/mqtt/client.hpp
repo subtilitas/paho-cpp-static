@@ -609,11 +609,12 @@ public:
     /// tear down a healthy connection; a handler that calls step() should check
     /// for that code, and an application that never does cannot receive it.
     ///
-    /// Not callable from a handler. A handler runs inside step(), on the buffer
-    /// step() is in the middle of draining, so a nested call re-drains the same
-    /// bytes, re-enters the same handler and recurses without bound -- which
-    /// would break the bounded-stack guarantee this library measures in CI.
-    /// The nested call returns Error::Reentrant and does nothing instead.
+    /// Refused from a handler, rather than forbidden there: the nested call
+    /// returns Error::Reentrant and does nothing, and the session carries on.
+    /// A handler runs inside step(), on the buffer step() is in the middle of
+    /// draining, so a nested call would re-drain the same bytes, re-enter the
+    /// same handler and recurse without bound -- breaking the bounded-stack
+    /// guarantee this library measures on target in CI.
     Error step() noexcept
     {
         if (in_step_)
