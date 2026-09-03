@@ -27,3 +27,12 @@
 *.o   binary
 *.obj binary
 *.exe binary
+
+# Fuzz corpus inputs are raw bytes that happen to have no extension. text=auto
+# guesses, and an input it guesses wrong about gets its line endings rewritten
+# -- which silently changes the bytes the fuzzer replays, and with them what
+# the corpus covers.
+# One directory per target, so this matches the inputs without matching the
+# documentation that sits beside them -- `binary` is a macro for -diff -merge
+# -text, and a README carrying it would lose its diff.
+tests/fuzz/corpus/*/** binary

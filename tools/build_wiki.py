@@ -49,6 +49,7 @@ PROSE_PAGES = [
     ("docs/comparison-with-paho.md", "Comparison-with-Paho", "Comparison with Paho"),
     ("docs/static-analysis.md", "Static-Analysis", "Static analysis"),
     ("docs/misra.md", "MISRA", "MISRA C++:2023"),
+    ("docs/compatibility.md", "Compatibility", "Compatibility"),
     ("CHANGELOG.md", "Changelog", "Changelog"),
     ("NOTICE.md", "Notices", "Licence and notices"),
 ]
@@ -575,7 +576,7 @@ PROFILES = [
 # The `+ 1` is because a zero-length array is ill-formed and
 # `max_inflight_out` is legitimately 0 on the sensor profile. Python subtracts
 # it back off. The arrays have no initialiser on purpose -- that keeps them in
-# .bss, so a 4 KB gateway buffer costs nothing in the object file.
+# .bss, so a 4 KiB gateway buffer costs nothing in the object file.
 PROBE = r"""
 #include "mqtt/client.hpp"
 

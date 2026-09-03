@@ -1,0 +1,48 @@
+@PACKAGE_INIT@
+
+# How ETL was satisfied when this package was built. Decided there, recorded
+# here: ETL appears in this library's public headers, and a config that
+# resolved that dependency to a different copy than the library was compiled
+# against would be worse than no config at all.
+set(PAHO_CPP_STATIC_VERSION_FULL "@MQTT_VERSION_FULL@")
+set(PAHO_CPP_STATIC_ETL_VENDORED @MQTT_INSTALL_ETL@)
+set(PAHO_CPP_STATIC_ETL_TAG "@MQTT_ETL_TAG@")
+set(PAHO_CPP_STATIC_ETL_COMMIT "@MQTT_ETL_COMMIT@")
+
+if(PAHO_CPP_STATIC_ETL_VENDORED)
+    # The exact ETL headers this library was compiled against ship with it.
+    # Nothing to find, and no way to pick up a different version by accident.
+    set_and_check(_paho_cpp_static_etl_include
+                  "@PACKAGE_MQTT_ETL_INSTALL_INCLUDEDIR@")
+
+    if(NOT EXISTS "${_paho_cpp_static_etl_include}/etl/version.h")
+        set(paho-cpp-static_FOUND FALSE)
+        set(paho-cpp-static_NOT_FOUND_MESSAGE
+            "paho-cpp-static was installed with vendored ETL headers, but they are "
+            "not present at ${_paho_cpp_static_etl_include}. The installation is "
+            "incomplete.")
+        return()
+    endif()
+else()
+    # This build was pointed at an ETL the consumer manages, so the consumer
+    # supplies it here too. Failing with a message beats resolving to whatever
+    # copy happens to be on the include path.
+    include(CMakeFindDependencyMacro)
+
+    find_dependency(etl)
+
+    if(NOT etl_FOUND)
+        set(paho-cpp-static_FOUND FALSE)
+        set(paho-cpp-static_NOT_FOUND_MESSAGE
+            "paho-cpp-static requires the Embedded Template Library, which appears "
+            "in its public headers. This package was built against an external ETL "
+            "(${PAHO_CPP_STATIC_ETL_TAG}), so find_package(etl) has to succeed. "
+            "Install ETL, or rebuild paho-cpp-static with -DMQTT_INSTALL_ETL=ON to "
+            "ship the headers with it.")
+        return()
+    endif()
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/paho-cpp-staticTargets.cmake")
+
+check_required_components(paho-cpp-static)

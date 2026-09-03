@@ -33,7 +33,7 @@ env:
   # and a cache key that only names one would keep serving a stale
   # checkout of the previous content. tools/pins.py --check enforces
   # that this matches, and supply-chain.yml watches the tag itself.
-  ETL_COMMIT: 081e920302e4062dbd122fc3c86255825ccaa666
+  ETL_COMMIT: 7f290365a9f1b72bf89b4b77ec7dbe39b228bd8e
 
 jobs:
   analyse:

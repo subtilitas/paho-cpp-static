@@ -64,7 +64,7 @@ static constexpr uint8_t kSubackFailure = 0x80;
 
 /// Protocol constants.
 static constexpr uint8_t  kProtocolLevel_3_1_1 = 4;
-static constexpr uint32_t kMaxRemainingLength  = 268435455u;   ///< 256 MB - 1
+static constexpr uint32_t kMaxRemainingLength  = 268435455u;   ///< 256 MiB - 1
 static constexpr size_t   kMaxVbiBytes         = 4;
 
 //------------------------------------------------------------------------------

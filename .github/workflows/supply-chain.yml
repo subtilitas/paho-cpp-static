@@ -4,7 +4,7 @@
 # does nothing on its own about the two things that can go wrong afterwards.
 # This workflow covers both, and they are different in kind:
 #
-#   Integrity -- the tag moved. Someone force-pushed 20.39.4 to different
+#   Integrity -- the tag moved. Someone force-pushed the pinned tag to different
 #   content. The pin protects *this* build, but a consumer following the tag
 #   is now getting something else, and the mismatch is worth knowing about
 #   immediately. This fails the job.

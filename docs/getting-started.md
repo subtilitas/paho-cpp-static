@@ -28,7 +28,7 @@ mosquitto -p 1883 &
 
 ```
 connecting to 127.0.0.1:1883, topic 'demo/hello'
-client footprint: 2552 bytes
+client footprint: 2496 bytes
 connected (session_present=0)
 subscribed to 'demo/hello'
   -> reading 0

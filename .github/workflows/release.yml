@@ -30,7 +30,7 @@ env:
   # and a cache key that only names one would keep serving a stale
   # checkout of the previous content. tools/pins.py --check enforces
   # that this matches, and supply-chain.yml watches the tag itself.
-  ETL_COMMIT: 081e920302e4062dbd122fc3c86255825ccaa666
+  ETL_COMMIT: 7f290365a9f1b72bf89b4b77ec7dbe39b228bd8e
 
 defaults:
   run:
@@ -44,6 +44,7 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
 
@@ -55,25 +56,36 @@ jobs:
           tag="${{ github.event.inputs.tag || github.ref_name }}"
           tagged="${tag#v}"
 
-          # Tags here have been written both ways -- v1.3 as well as v0.1.0 --
-          # while CMake always declares three components. So compare on meaning
-          # rather than on spelling: pad both to major.minor.patch first. v0.2
-          # and v0.2.0 are then the same release, and a tag that genuinely
-          # disagrees with project(VERSION ...) -- which would ship archives
-          # named after a version nobody declared -- still fails.
-          pad3() {
-            case "$(printf '%s' "$1" | tr -cd '.' | wc -c)" in
-              0) printf '%s.0.0' "$1" ;;
-              1) printf '%s.0'   "$1" ;;
-              *) printf '%s'     "$1" ;;
-            esac
-          }
-
-          declared=$(sed -n 's/.*project(paho-cpp-static VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          # A release candidate carries a suffix -- v1.0.0-rc1 -- that
+          # project(VERSION ...) cannot hold, because CMake takes digits and
+          # dots only. CMakeLists declares the suffix separately and
+          # tools/pins.py joins the two, so the comparison below is against one
+          # value from one place rather than a version reassembled here.
+          declared=$(python3 tools/pins.py --field version-full)
+          prerelease=$(python3 tools/pins.py --field prerelease)
           if [ -z "$declared" ]; then
-            echo "could not read VERSION out of CMakeLists.txt"
+            echo "could not read the version out of CMakeLists.txt"
             exit 1
           fi
+
+          # Tags here have been written both ways -- v1.3 as well as v0.1.0 --
+          # while CMake always declares three components. So compare on meaning
+          # rather than on spelling: pad both to major.minor.patch first, with
+          # any suffix set aside and put back. v0.2 and v0.2.0 are then the
+          # same release, and a tag that genuinely disagrees with what is
+          # declared -- which would ship archives named after a version nobody
+          # declared -- still fails.
+          pad3() {
+            local core="${1%%-*}"
+            local suffix=""
+            case "$1" in *-*) suffix="-${1#*-}" ;; esac
+
+            case "$(printf '%s' "$core" | tr -cd '.' | wc -c)" in
+              0) printf '%s.0.0%s' "$core" "$suffix" ;;
+              1) printf '%s.0%s'   "$core" "$suffix" ;;
+              *) printf '%s%s'     "$core" "$suffix" ;;
+            esac
+          }
 
           version=$(pad3 "$declared")
           if [ "$(pad3 "$tagged")" != "$version" ]; then
@@ -81,11 +93,21 @@ jobs:
             exit 1
           fi
 
+          # A suffix means this is not the release users should land on by
+          # default, so the release is marked as a prerelease and never becomes
+          # "latest". The declaration drives it: a tag alone cannot make a
+          # final release out of a candidate, or the reverse.
+          if [ -n "$prerelease" ]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
           # Archives are named from the declared version, so a v0.2 tag and a
           # v0.2.0 tag both produce paho-cpp-static-0.2.0-<platform>.
           echo "tag=$tag"         >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "releasing $tag as version $version"
+          echo "releasing $tag as version $version (prerelease: ${prerelease:-no})"
 
       # Generated, not stored. The pin lives in CMakeLists.txt and the SBOM is
       # derived from it, so the two cannot disagree -- which is the failure
@@ -110,10 +132,12 @@ jobs:
 
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "release $tag already exists; reusing it as a draft"
-            gh release edit "$tag" --draft
+            gh release edit "$tag" --draft \
+              --prerelease=${{ steps.meta.outputs.prerelease }}
           else
             gh release create "$tag" \
               --draft \
+              ${{ steps.meta.outputs.prerelease == 'true' && '--prerelease' || '' }} \
               --title "$tag" \
               --generate-notes
           fi

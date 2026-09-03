@@ -43,43 +43,50 @@ namespace mqtt {
 /// Every fallible operation in this library reports failure through this enum.
 /// There are no exceptions and no error globals.
 ///
-/// Fixed at one byte. There are twenty-odd codes and room for two hundred more,
-/// and the narrower type packs better next to the other small members: it takes
-/// eight bytes off sizeof(Client<DefaultConfig>) on a 64-bit build for nothing.
+/// Fixed at one byte. There are 22 codes and room for two hundred more, and the
+/// narrower type packs better next to the other small members: it takes eight
+/// bytes off sizeof(Client<DefaultConfig>) on a 64-bit build for nothing.
+///
+/// The numeric values are spelled out because they are part of the public API
+/// rather than an accident of declaration order. Under the 1.x compatibility
+/// promise a code that is retired keeps its number and its slot, and the
+/// number is never reused for anything else. tests/test_error_values.cpp pins
+/// every one of them, so a change that would renumber the tail fails the suite
+/// instead of silently breaking a peer that stored the byte.
 enum class Error : uint8_t
 {
     Ok = 0,
 
     // --- flow control (not really failures) ---
-    WouldBlock,   ///< Operation incomplete; call again later. Never an error.
-    Incomplete,   ///< A partial packet was consumed; more bytes needed.
+    WouldBlock = 1,   ///< Operation incomplete; call again later. Never an error.
+    Incomplete = 2,   ///< A partial packet was consumed; more bytes needed.
 
     // --- caller / configuration errors ---
-    InvalidArgument,    ///< A parameter failed validation.
-    NotConnected,       ///< Operation requires an established MQTT session.
-    AlreadyConnected,   ///< connect() called while a session is active.
-    NotSupported,       ///< Feature intentionally omitted from this build.
+    InvalidArgument  = 3,   ///< A parameter failed validation.
+    NotConnected     = 4,   ///< Operation requires an established MQTT session.
+    AlreadyConnected = 5,   ///< connect() called while a session is active.
+    NotSupported     = 6,   ///< Feature intentionally omitted from this build.
 
     // --- capacity exhaustion (the interesting ones on a static build) ---
-    BufferTooSmall,       ///< Serialization target ran out of room.
-    TxQueueFull,          ///< Outgoing byte queue cannot accept the packet right now.
-    NoInflightSlot,       ///< All QoS>0 outbound slots are occupied.
-    NoSubscriptionSlot,   ///< Subscription table is full.
-    NoPendingAckSlot,     ///< SUBSCRIBE/UNSUBSCRIBE ack tracking table is full.
-    PayloadTooLarge,      ///< Message exceeds the configured persisted-message size.
-    TopicTooLong,         ///< Topic or filter exceeds Config::max_topic_len.
+    BufferTooSmall     = 7,    ///< Serialization target ran out of room.
+    TxQueueFull        = 8,    ///< Outgoing byte queue cannot accept the packet right now.
+    NoInflightSlot     = 9,    ///< All QoS>0 outbound slots are occupied.
+    NoSubscriptionSlot = 10,   ///< Subscription table is full.
+    NoPendingAckSlot   = 11,   ///< SUBSCRIBE/UNSUBSCRIBE ack tracking table is full.
+    PayloadTooLarge    = 12,   ///< Message exceeds the configured persisted-message size.
+    TopicTooLong       = 13,   ///< Topic or filter exceeds Config::max_topic_len.
 
     // --- protocol / peer errors ---
-    MalformedPacket,     ///< Bytes on the wire did not parse.
-    ProtocolViolation,   ///< Peer did something the spec forbids.
-    PacketTooLarge,      ///< Inbound packet exceeds the receive buffer.
-    ConnectionRefused,   ///< Broker rejected CONNECT; see Client::connack().
-    KeepAliveTimeout,    ///< No PINGRESP within the keep-alive window.
-    ConnectTimeout,      ///< Handshake did not finish within connect_timeout_ms.
+    MalformedPacket   = 14,   ///< Bytes on the wire did not parse.
+    ProtocolViolation = 15,   ///< Peer did something the spec forbids.
+    PacketTooLarge    = 16,   ///< Inbound packet exceeds the receive buffer.
+    ConnectionRefused = 17,   ///< Broker rejected CONNECT; see Client::connack().
+    KeepAliveTimeout  = 18,   ///< No PINGRESP within the keep-alive window.
+    ConnectTimeout    = 19,   ///< Handshake did not finish within connect_timeout_ms.
 
     // --- transport errors ---
-    TransportFailure,   ///< Underlying transport reported an unrecoverable error.
-    TransportClosed,    ///< Peer closed the connection.
+    TransportFailure = 20,   ///< Underlying transport reported an unrecoverable error.
+    TransportClosed  = 21,   ///< Peer closed the connection.
 };
 
 /// Human-readable name for an error, for logging. Returns a static string;

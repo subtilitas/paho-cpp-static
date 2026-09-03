@@ -25,6 +25,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 _VERSION = re.compile(r"project\(paho-cpp-static\s+VERSION\s+([0-9][0-9.]*)")
+_PRERELEASE = re.compile(r'set\(MQTT_VERSION_PRERELEASE\s+"([^"]*)"')
 _ETL_TAG = re.compile(r'set\(MQTT_ETL_TAG\s+"([^"]+)"')
 _ETL_COMMIT = re.compile(r'set\(MQTT_ETL_COMMIT\s+"([0-9a-f]{40})"')
 
@@ -33,6 +34,15 @@ class Pins:
     def __init__(self, repo: Path = REPO):
         text = (repo / "CMakeLists.txt").read_text(encoding="utf-8")
         self.version = self._one(_VERSION, text, "project(... VERSION ...)")
+
+        # project(VERSION ...) is numeric, so a release candidate carries its
+        # "-rc1" in a variable of its own. version_full is what a tag has to
+        # match and what names a release archive.
+        self.prerelease = self._one(_PRERELEASE, text, "MQTT_VERSION_PRERELEASE")
+        self.version_full = (
+            f"{self.version}-{self.prerelease}" if self.prerelease else self.version
+        )
+
         self.etl_tag = self._one(_ETL_TAG, text, "MQTT_ETL_TAG")
         self.etl_commit = self._one(_ETL_COMMIT, text, "MQTT_ETL_COMMIT")
         self.repo = repo
@@ -48,7 +58,7 @@ class Pins:
 
     def __str__(self) -> str:
         return (
-            f"project version   {self.version}\n"
+            f"project version   {self.version_full}\n"
             f"ETL tag           {self.etl_tag}\n"
             f"ETL commit        {self.etl_commit}"
         )
@@ -104,7 +114,9 @@ def main() -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true",
                         help="exit non-zero if anything disagrees with CMakeLists.txt")
-    parser.add_argument("--field", choices=("version", "etl-tag", "etl-commit"),
+    parser.add_argument("--field",
+                        choices=("version", "version-full", "prerelease",
+                                 "etl-tag", "etl-commit"),
                         help="print one value and nothing else, for use in a shell")
     args = parser.parse_args()
 
@@ -112,6 +124,8 @@ def main() -> int:
 
     if args.field:
         print({"version": pins.version,
+               "version-full": pins.version_full,
+               "prerelease": pins.prerelease,
                "etl-tag": pins.etl_tag,
                "etl-commit": pins.etl_commit}[args.field])
         return 0

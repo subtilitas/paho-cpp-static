@@ -24,6 +24,7 @@ pins_mod = _load()
 CMAKE = """\
 cmake_minimum_required(VERSION 3.16)
 project(paho-cpp-static VERSION 1.2.3 LANGUAGES CXX)
+set(MQTT_VERSION_PRERELEASE "" CACHE STRING "...")
 set(MQTT_ETL_TAG "20.39.4" CACHE STRING "...")
 set(MQTT_ETL_COMMIT "081e920302e4062dbd122fc3c86255825ccaa666" CACHE STRING "...")
 """
@@ -46,6 +47,34 @@ class Reading(unittest.TestCase):
             self.assertEqual(p.version, "1.2.3")
             self.assertEqual(p.etl_tag, "20.39.4")
             self.assertEqual(p.etl_commit, "081e920302e4062dbd122fc3c86255825ccaa666")
+
+    def test_an_empty_prerelease_leaves_the_version_alone(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = pins_mod.Pins(fake_repo(Path(t)))
+            self.assertEqual(p.prerelease, "")
+            self.assertEqual(p.version_full, "1.2.3")
+
+    def test_a_prerelease_suffix_joins_onto_the_version(self):
+        # project(VERSION ...) cannot hold the suffix, so the two are declared
+        # separately and joined here. This is what a release tag is checked
+        # against.
+        rc = CMAKE.replace('set(MQTT_VERSION_PRERELEASE ""',
+                           'set(MQTT_VERSION_PRERELEASE "rc1"')
+        with tempfile.TemporaryDirectory() as t:
+            p = pins_mod.Pins(fake_repo(Path(t), cmake=rc))
+            self.assertEqual(p.version, "1.2.3")
+            self.assertEqual(p.prerelease, "rc1")
+            self.assertEqual(p.version_full, "1.2.3-rc1")
+
+    def test_a_missing_prerelease_declaration_is_an_error(self):
+        # Absent is not the same as empty. The value decides whether a release
+        # is marked as a prerelease, so it has to be declared on purpose rather
+        # than defaulted by having been deleted.
+        gone = "\n".join(line for line in CMAKE.splitlines()
+                         if "MQTT_VERSION_PRERELEASE" not in line)
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(SystemExit):
+                pins_mod.Pins(fake_repo(Path(t), cmake=gone))
 
     def test_a_short_hash_is_not_accepted_as_a_pin(self):
         # An abbreviated hash is ambiguous in principle and unverifiable in

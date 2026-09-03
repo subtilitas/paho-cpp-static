@@ -14,8 +14,17 @@
 #include <cstring>
 
 #include "mqtt/client.hpp"
+
+// The library has no OS dependency, so a port is a transport and a clock and
+// nothing else. This demo picks the pair for the platform and is otherwise
+// identical on both -- which is the claim, demonstrated rather than asserted.
+#if defined(_WIN32)
+#include "win_clock.hpp"
+#include "winsock_transport.hpp"
+#else
 #include "posix_clock.hpp"
 #include "tcp_ip_transport.hpp"
+#endif
 
 namespace {
 
@@ -57,8 +66,13 @@ int main(int argc, char** argv)
     if (argc > 3)
         std::snprintf(g_topic, sizeof(g_topic), "%s", argv[3]);
 
-    static example::PosixClock      clock;
-    static example::TcpIpTransport  transport(broker, port);
+#if defined(_WIN32)
+    static example::WinClock         clock;
+    static example::WinsockTransport transport(broker, port);
+#else
+    static example::PosixClock     clock;
+    static example::TcpIpTransport transport(broker, port);
+#endif
     static mqtt::Client<NodeConfig> client{transport, clock};
 
     std::printf("connecting to %u.%u.%u.%u:%u, topic '%s'\n", broker.octets[0],
