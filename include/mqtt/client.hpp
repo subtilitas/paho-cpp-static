@@ -205,9 +205,20 @@ public:
     /// views into the receive buffer and are valid only for the call.
     ///
     /// Handlers run inside step(), while the subscription table is being walked.
-    /// Calling subscribe() or unsubscribe() from one would mutate that table
-    /// mid-iteration, so don't: set a flag and act on it after step() returns.
-    /// publish() is fine, as are all the introspection accessors.
+    /// What a handler may do to the client:
+    ///
+    /// - publish(), and every introspection accessor: fine.
+    /// - disconnect() and abort(): fine. The session ends, and the rest of
+    ///   this step() is abandoned.
+    /// - subscribe() and unsubscribe(): no. They mutate the table being
+    ///   walked. Set a flag and act on it after step() returns.
+    /// - step(): refused, returning Error::Reentrant. It would re-drain the
+    ///   same bytes and re-enter this handler, without bound.
+    ///
+    /// Ending the session from a handler is supported rather than merely
+    /// tolerated: abort() exists so a handler can drop the connection and let
+    /// the broker publish the will, which is what a handler does on receiving a
+    /// shutdown command.
     using MessageHandler = detail::Handler<void(const Message&)>;
     /// Handler invoked once the broker has accepted the CONNECT.
     using ConnectHandler = detail::Handler<void(const ConnackInfo&)>;
@@ -590,7 +601,25 @@ public:
     /// Returns Error::Ok when everything is fine (including when there was
     /// simply nothing to do). Any other value means the session has just ended;
     /// the same value was passed to the on_disconnect handler.
+    ///
+    /// Not callable from a handler. A handler runs inside step(), on the buffer
+    /// step() is in the middle of draining, so a nested call re-drains the same
+    /// bytes, re-enters the same handler and recurses without bound -- which
+    /// would break the bounded-stack guarantee this library measures in CI.
+    /// The nested call returns Error::Reentrant and does nothing instead.
     Error step() noexcept
+    {
+        if (in_step_)
+            return Error::Reentrant;
+
+        in_step_      = true;
+        const Error e = step_once();
+        in_step_      = false;
+        return e;
+    }
+
+private:
+    Error step_once() noexcept
     {
         if (state_ == State::Idle)
             return Error::Ok;
@@ -658,6 +687,7 @@ public:
         return Error::Ok;
     }
 
+public:
     //--------------------------------------------------------------------------
     // Introspection
     //--------------------------------------------------------------------------
@@ -907,6 +937,25 @@ private:
                                                 p.header.remaining_length);
 
             const Error e = handle_packet(p.header, body);
+
+            // handle_packet runs application callbacks, and a callback can
+            // empty the receive buffer underneath this frame: abort() and a
+            // disconnect() that cannot queue both reach shutdown(), which sets
+            // rx_len_ to zero, and a reentrant step() drains the buffer itself.
+            //
+            // p.total_bytes was measured before that happened, so the
+            // subtraction below would wrap -- it is size_t -- and hand memmove
+            // a length near SIZE_MAX.
+            //
+            // Detect it by the only thing that can be true afterwards, and stop
+            // rather than clamp: the bytes still held belong to a session that
+            // has ended, or to an inner drain that already dealt with them.
+            // There is nothing left here worth shifting.
+            if (rx_len_ < p.total_bytes)
+            {
+                rx_len_ = 0;
+                return (e != Error::Ok) ? e : last_error_;
+            }
 
             // Shift the remainder down before reacting to any error, so the
             // buffer is always in a consistent state.
@@ -1185,8 +1234,14 @@ private:
             }
         }
 
-        on_suback_.call_if(v.packet_id, v.return_codes);
+        // Retire the tracking entry before the callback, not after. The
+        // callback can end the session, and shutdown() clears pending_ -- after
+        // which `ack` names an element of an empty vector and remove_pending
+        // erases out of range. The entry has done its work by this point, and
+        // a callback should not see a half-consumed table in any case.
         remove_pending(ack);
+
+        on_suback_.call_if(v.packet_id, v.return_codes);
         return Error::Ok;
     }
 
@@ -1589,6 +1644,9 @@ private:
     ConnackInfo connack_{};
     State       state_      = State::Idle;
     Error       last_error_ = Error::Ok;
+
+    /// True while step() is on the stack, so a handler cannot re-enter it.
+    bool in_step_ = false;
 
     uint32_t keep_alive_ms_          = 0;
     uint32_t last_sent_ms_           = 0;

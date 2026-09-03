@@ -71,10 +71,10 @@ TEST(to_string_names_every_connack_code)
 
 TEST(to_string_names_every_error)
 {
-    // Ok(0) through TransportClosed(21).
-    check_names<Error>([](Error e) { return to_string(e); }, 22u, "Unknown");
+    // Ok(0) through Reentrant(22).
+    check_names<Error>([](Error e) { return to_string(e); }, 23u, "Unknown");
 
-    CHECK(std::strcmp(to_string(static_cast<Error>(22)), "Unknown") == 0);
+    CHECK(std::strcmp(to_string(static_cast<Error>(23)), "Unknown") == 0);
 
     // Spot-check that the mapping is the right way round rather than merely
     // dense -- check_names would be satisfied by 22 distinct wrong answers.
@@ -97,7 +97,7 @@ TEST(is_retryable_covers_only_the_flow_control_codes)
     CHECK(is_retryable(Error::WouldBlock));
     CHECK(is_retryable(Error::Incomplete));
 
-    for (unsigned i = 0; i < 22u; ++i)
+    for (unsigned i = 0; i < 23u; ++i)
     {
         const Error e = static_cast<Error>(i);
         if (e == Error::WouldBlock || e == Error::Incomplete)

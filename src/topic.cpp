@@ -86,7 +86,17 @@ bool topic_matches(etl::string_view filter, etl::string_view topic) noexcept
     size_t f = 0;
     size_t t = 0;
 
-    while (f < filter.size())
+    // Not `while (f < filter.size())`. A filter ending in '/' has an empty last
+    // level, and so does the topic it should match: "a/" against "a/". With
+    // that condition both indices advance past the final separator, the loop
+    // exits before those two empty levels are compared, and the function falls
+    // through to `return false` -- so such a filter matched nothing at all, not
+    // even itself. MQTT 3.1.1 section 4.7.1 permits a zero-length level
+    // anywhere, and both validators here accept these strings.
+    //
+    // Every exit is a return from inside: the loop ends when one side or the
+    // other runs out, which the level comparison below detects.
+    for (;;)
     {
         // Extract the next filter level.
         size_t f_end = f;
@@ -139,8 +149,6 @@ bool topic_matches(etl::string_view filter, etl::string_view topic) noexcept
         f = f_end + 1;
         t = t_end + 1;
     }
-
-    return false;
 }
 
 }   // namespace mqtt

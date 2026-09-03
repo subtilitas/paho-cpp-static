@@ -14,6 +14,67 @@ version rather than a major one. None of those guarantees applied to them.
 refuses a tag that disagrees with it. The entries here are a record, not a
 second declaration that could drift.
 
+## [1.0.0-rc2] — 2026-09-03
+
+Three memory-safety defects and one silent delivery failure, all found in
+1.0.0-rc1 by an adversarial suite kept outside this repository. No public
+declaration changes except one appended `Error` code, which the compatibility
+promise allows.
+
+### Fixed
+
+- **`drain_rx` handed `memmove` a negative length when a handler ended the
+  session.** The packet size is measured before the handler runs and subtracted
+  from `rx_len_` after. `abort()` reaches `shutdown()`, which sets `rx_len_` to
+  zero, so the `size_t` subtraction wrapped to near `SIZE_MAX`. One QoS 0
+  PUBLISH and a handler that calls `abort()` is enough, on `DefaultConfig`.
+  Reachable from documented application code: the handler rules named
+  `subscribe()` and `unsubscribe()` as the things not to do, and `abort()` is
+  documented as the way to drop a connection so the will fires.
+
+  `drain_rx` now detects that the buffer moved under it and stops, rather than
+  clamping and draining on into a session that has ended.
+- **`handle_suback` erased through a pointer the callback had invalidated.**
+  The SUBACK handler ran the callback and then retired the pending-ack entry;
+  a callback that ends the session reaches `shutdown()`, which clears
+  `pending_`, leaving the entry pointer naming an element of an empty vector.
+  The entry is now retired before the callback.
+- **`step()` called from a handler recursed without bound.** It re-drained the
+  same bytes, re-entered the same handler and ran the stack out — contradicting
+  the bounded-stack guarantee this project measures on target in CI. A nested
+  call now returns `Error::Reentrant` and does nothing.
+- **A topic filter ending in `/` matched nothing, including its own topic.**
+  `topic_matches` advanced past the trailing separator and left the loop before
+  comparing the empty final level on each side, so a subscription to `sensors/`
+  received nothing. MQTT 3.1.1 §4.7.1 permits a zero-length level, both
+  validators accept these strings, and a broker forwards them — so the failure
+  was silent: no error code, no log line, no memory error. 476 filter/topic
+  pairs were affected, every one a false negative.
+
+### Added
+
+- **`Error::Reentrant` (22)**, appended. Under the compatibility promise a new
+  code is appended and no existing number moves; `TransportClosed` is still 21.
+- **`tests/test_callback_reentrancy.cpp`** — seven cases covering what a
+  handler may do to the client that is calling it. Every one fails under
+  AddressSanitizer or UndefinedBehaviorSanitizer against rc1.
+- **A differential check for `topic_matches`**, comparing it with a second
+  implementation over every filter/topic pair up to length four that both
+  validators accept. This is what a wrong-but-clean answer needs: no sanitizer,
+  coverage gate or oracle-less fuzzer can see a function that returns the wrong
+  result without misbehaving.
+- **Fuzz handlers that act on the client.** `fuzz_client`'s handlers did
+  nothing, which left every defect above structurally unreachable — 100,000
+  runs found none of them. They now publish, disconnect, abort, re-enter
+  `step()` and read the accessors, chosen from the input; against rc1 the
+  target reproduces the `memmove` defect in under 30,000 runs. The checked-in
+  corpus grew from 1187 to 1452 covered edges.
+
+### Changed
+
+- The handler documentation states what a handler may do, rather than only what
+  it may not.
+
 ## [1.0.0-rc1] — 2026-09-03
 
 First release candidate for 1.0. The API is frozen as described in

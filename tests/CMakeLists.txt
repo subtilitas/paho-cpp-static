@@ -9,6 +9,7 @@ add_executable(mqtt_tests
     test_topic.cpp
     test_utf8.cpp
     test_client.cpp
+    test_callback_reentrancy.cpp
     test_to_string.cpp
     test_error_values.cpp
     test_tx_queue.cpp

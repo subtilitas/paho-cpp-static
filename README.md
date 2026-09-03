@@ -127,6 +127,10 @@ Two consequences of not allocating:
   callable, not a copy, so the callable must outlive the client. Passing a
   temporary is a compile error rather than a dangling pointer — name it
   (`static`, or a member) and pass that.
+- **A handler may end the session.** `abort()` and `disconnect()` are safe from
+  inside one, and the rest of that `step()` is abandoned. `subscribe()` and
+  `unsubscribe()` are not — they mutate the table being walked. `step()` itself
+  returns `Error::Reentrant` rather than recursing.
 
 ## Porting
 
@@ -251,7 +255,7 @@ page, rebuilt from the suite on every push.
 | `tests/test_packet.cpp` | variable byte integers, fixed header flag validation |
 | `tests/test_codec.cpp` | encode/decode round trips, golden bytes, malformed input |
 | `tests/test_encode_bounds.cpp` | every encoder against every output buffer size |
-| `tests/test_topic.cpp` | wildcard matching against the spec's own examples |
+| `tests/test_topic.cpp` | wildcard matching against the spec's own examples, and against a second implementation over every short filter/topic pair |
 | `tests/test_utf8.cpp` | overlongs, surrogates, truncation, U+0000, the BOM |
 | `tests/test_tx_queue.cpp` | FIFO reserve, commit, consume, compaction |
 | `tests/test_client.cpp` | handshakes, QoS flows, keep-alive, fragmentation, teardown |
@@ -259,6 +263,7 @@ page, rebuilt from the suite on every push.
 | `tests/test_config_profiles.cpp` | the client instantiates and runs at each documented profile |
 | `tests/test_to_string.cpp` | every enumerator has a distinct name and no fallthrough |
 | `tests/test_error_values.cpp` | the `Error` numbering, pinned at compile time and at run time |
+| `tests/test_callback_reentrancy.cpp` | what a handler may do to the client that is calling it |
 | `tests/test_no_alloc.cpp` | global `operator new` replaced with a counter |
 
 Three more cases are builds rather than runs, under `tests/compile_fail/`: a
@@ -283,9 +288,9 @@ allocate, so a `Client` can live in `.bss` on a target with no heap linked.
 <!-- coverage:start -->
 | Metric | Covered | Total | Measured |
 |---|---|---|---|
-| Lines | 1201 | 1274 | 94.3% |
-| Branches | 836 | 950 | 88.0% |
-| Functions | 441 | 525 | 84.0% |
+| Lines | 1213 | 1285 | 94.4% |
+| Branches | 844 | 955 | 88.4% |
+| Functions | 502 | 603 | 83.3% |
 <!-- coverage:end -->
 
 Measured by `gcovr` on every push and published to
