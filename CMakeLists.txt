@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(paho-cpp-static VERSION 0.6.1 LANGUAGES CXX
+project(paho-cpp-static VERSION 1.0.0 LANGUAGES CXX
         DESCRIPTION "Statically allocated MQTT 3.1.1 client in C++17")
 
 #-------------------------------------------------------------------------------
@@ -20,7 +20,7 @@ option(MQTT_FUZZ           "Build the libFuzzer targets (clang only)" OFF)
 # candidate cannot live there. It lives here instead, and the two are joined
 # into MQTT_VERSION_FULL below -- which is what a tag is checked against and
 # what names a release archive. Empty for a final release.
-set(MQTT_VERSION_PRERELEASE "" CACHE STRING
+set(MQTT_VERSION_PRERELEASE "rc1" CACHE STRING
     "Prerelease suffix, e.g. rc1. Empty for a final release.")
 
 if(MQTT_VERSION_PRERELEASE)
