@@ -27,7 +27,7 @@ run time.
   via `etl::byte_stream_writer` / `etl::byte_stream_reader`, which report
   overruns as `bool` / `etl::optional` rather than throwing.
 
-About 2 200 lines of library and 1 KB of RAM at the small end. Flash, RAM and
+About 2 200 lines of library and 1 KiB of RAM at the small end. Flash, RAM and
 stack are measured on every push, on the host and cross-compiled for Cortex-M0+
 and Cortex-M4 — see
 [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint)
@@ -51,6 +51,32 @@ Then, against a local broker:
 ```bash
 ./build/examples/pubsub_demo 127.0.0.1 1883 demo/topic
 ```
+
+## Installing it
+
+`add_subdirectory()` and `FetchContent` both work — link `mqtt::client`, which
+carries the ETL include path with it. To install instead:
+
+```bash
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/your/prefix
+cmake --build build
+cmake --install build
+```
+
+```cmake
+find_package(paho-cpp-static 1.0 REQUIRED)
+target_link_libraries(app PRIVATE mqtt::client)
+```
+
+ETL appears in this library's public headers, so an installed package has to
+say where ETL comes from rather than leave a consumer to find it. How it was
+satisfied is decided when the library is built and recorded in the generated
+config: a build that fetched ETL installs those exact headers alongside the
+library, in a directory of their own, and points at them; a build given
+`-DMQTT_ETL_DIR=...` records that the consumer manages ETL and requires
+`find_package(etl)`, saying so plainly if it is missing. ETL installs nothing of
+its own when it is not the top-level project, which is why the first is the
+default.
 
 ## Using it
 
@@ -97,9 +123,10 @@ Two consequences of not allocating:
 
 - **`Message::topic` and `Message::payload` are views into the receive buffer**,
   valid only for the duration of the callback. Copy what you keep.
-- **Callbacks are non-owning.** `etl::delegate` stores a pointer to the
-  callable, so a lambda passed as a temporary dangles. Name it (`static`, or a
-  member) rather than passing it inline.
+- **Callbacks are non-owning.** A callback slot stores a pointer to the
+  callable, not a copy, so the callable must outlive the client. Passing a
+  temporary is a compile error rather than a dangling pointer — name it
+  (`static`, or a member) and pass that.
 
 ## Porting
 
@@ -131,7 +158,24 @@ Three worked transports ship in `examples/`:
 |---|---|
 | `posix_transport.hpp` | BSD sockets with `getaddrinfo`, so it takes a hostname |
 | `tcp_ip_transport.hpp` | fixed IPv4 address, no DNS and no resolver — closest to a shipped device |
+| `winsock_transport.hpp` | the same, on Winsock. Link `ws2_32` |
 | `tls_transport.hpp` | the same interface around mbedTLS |
+
+### Platforms
+
+The library has no OS dependency, so a platform is a `Transport` and a `Clock`
+and nothing else.
+
+| Platform | Library and tests | Examples |
+|---|---|---|
+| Linux, GCC and Clang | built and tested on every push | all three demos |
+| macOS, Clang | built and tested on every push | all three demos |
+| Windows, MSVC | built and tested on every push | `ip_publisher`, over `winsock_transport.hpp` |
+| Cortex-M0+ and Cortex-M4, `arm-none-eabi` | built, with flash, RAM and stack measured on every push | none — no sockets to build against |
+
+`ip_publisher` selects the Winsock pair on Windows and the POSIX pair
+elsewhere, and is otherwise the same program. The other two demos use
+`getaddrinfo` through `<netdb.h>` and are built on Unix only.
 
 See [docs/porting.md](docs/porting.md) for lwIP, Zephyr, FreeRTOS+TCP and
 AT-command modem notes.
@@ -140,13 +184,13 @@ AT-command modem notes.
 
 | Profile | `sizeof(Client<Cfg>)` |
 |---|---|
-| Sensor — QoS 0 only, 256 B buffers | 1064 B |
-| `DefaultConfig` | 4600 B |
-| Gateway — 4 KB buffers, 16 inflight, 32 subs | 23 456 B |
+| Sensor — QoS 0 only, 256 B buffers | 1032 B |
+| `DefaultConfig` | 4544 B |
+| Gateway — 4 KiB buffers, 16 inflight, 32 subs | 23 368 B |
 
-Flash is roughly 6.9 KB for the non-template core, plus about 9 KB for a
-`Client<Cfg>` instantiation touching every public entry point — less in a real
-application, since the linker drops what you never call.
+Flash is 7.7 KiB (7866 bytes) for the non-template core, plus 8.9 KiB (9160
+bytes) for a `Client<Cfg>` instantiation touching every public entry point —
+less in a real application, since the linker drops what you never call.
 
 These are x86-64 GCC at `-Os`, indicative rather than a promise for Cortex-M.
 Exact figures are remeasured on every push and published to
@@ -214,7 +258,18 @@ page, rebuilt from the suite on every push.
 | `tests/test_step_bounds.cpp` | work per `step()` does not grow with what the peer queues |
 | `tests/test_config_profiles.cpp` | the client instantiates and runs at each documented profile |
 | `tests/test_to_string.cpp` | every enumerator has a distinct name and no fallthrough |
+| `tests/test_error_values.cpp` | the `Error` numbering, pinned at compile time and at run time |
 | `tests/test_no_alloc.cpp` | global `operator new` replaced with a counter |
+
+Three more cases are builds rather than runs, under `tests/compile_fail/`: a
+callback slot must reject a temporary callable and accept a named one, and a
+guard like that produces a build error rather than a wrong answer. CTest runs
+each by building it, two expecting failure and one expecting success — the
+third is the control, without which a slot that rejected everything would pass.
+
+`tests/consumer/` is built out of tree against the *installed* package, because
+`add_subdirectory()` and `FetchContent` both bypass the generated config file
+and would leave a broken one invisible.
 
 `test_no_alloc.cpp` is the load-bearing one. It replaces global `operator new`
 with a counting version, arms it, and drives a full session — connect,
@@ -228,9 +283,9 @@ allocate, so a `Client` can live in `.bss` on a target with no heap linked.
 <!-- coverage:start -->
 | Metric | Covered | Total | Measured |
 |---|---|---|---|
-| Lines | 1193 | 1266 | 94.2% |
+| Lines | 1201 | 1274 | 94.3% |
 | Branches | 836 | 950 | 88.0% |
-| Functions | 398 | 482 | 82.6% |
+| Functions | 441 | 525 | 84.0% |
 <!-- coverage:end -->
 
 Measured by `gcovr` on every push and published to
@@ -286,9 +341,14 @@ Also verified:
   [docs/static-analysis.md](docs/static-analysis.md).
 - `nm` on the library and on a full `Client` instantiation shows no reference to
   `malloc`, `operator new`, `__cxa_throw`, `_Unwind_*` or any typeinfo symbol.
-- Interoperates with Mosquitto at QoS 0/1/2 in both directions, the broker's own
-  trace confirming complete PUBLISH/PUBREC/PUBREL/PUBCOMP handshakes and
-  keep-alive pings with no protocol errors logged. CI runs this on every push.
+- Interoperates with two independent brokers at QoS 0/1/2 in both directions,
+  on every push. **Mosquitto**, with the broker's own trace confirming complete
+  PUBLISH/PUBREC/PUBREL/PUBCOMP handshakes and keep-alive pings and no protocol
+  errors logged. **[minimosq](https://github.com/subtilitas/minimosq-mqtt)**,
+  which reports protocol violations, refusals, failed sends and dropped
+  deliveries through an observer rather than a log, so that job asserts on typed
+  events instead of matching words. One implementation's leniency is not a
+  specification; two disagreeing is a finding.
 
 ## Documentation
 
@@ -311,7 +371,8 @@ from the suite itself.
 | [docs/comparison-with-paho.md](docs/comparison-with-paho.md) | differences from Eclipse Paho MQTT C and the reasoning |
 | [docs/static-analysis.md](docs/static-analysis.md) | what CodeQL, clang-tidy and clang-format report, and which of them gate |
 | [docs/misra.md](docs/misra.md) | MISRA C++:2023 self-assessment — constructs measured, two deviations, what a real claim would need |
-| [CHANGELOG.md](CHANGELOG.md) | what changed in each release, and the 0.x rule for breaking changes |
+| [docs/compatibility.md](docs/compatibility.md) | what a version number promises: the covered surface, what is excluded, the `Error` numbering rule |
+| [CHANGELOG.md](CHANGELOG.md) | what changed in each release |
 
 ## Layout
 

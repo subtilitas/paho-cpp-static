@@ -3,7 +3,7 @@
 Paho MQTT C targets a different machine than many embedded projects ship on.
 None of what follows is a criticism: its choices are the right ones for hosted
 systems with a heap, threads and an OS. Those are simply not available on a
-Cortex-M0 with 32 KB of RAM and a watchdog.
+Cortex-M0 with 32 KiB of RAM and a watchdog.
 
 ## At a glance
 
@@ -105,7 +105,7 @@ complexity and footprint. Most embedded deployments use 3.1.1. If you need v5,
 the codec is structured so properties can be added as a fixed-capacity array
 without disturbing the rest.
 
-**WebSocket.** Framing, masking, HTTP upgrade, base64 and SHA-1 — about 45 kB of
+**WebSocket.** Framing, masking, HTTP upgrade, base64 and SHA-1 — about 45 KiB of
 Paho's source. It exists to get MQTT through corporate proxies, rarely the
 constraint on a device with a cellular modem. It belongs in a `Transport`
 wrapper rather than in the client.

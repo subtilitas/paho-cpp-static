@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(paho-cpp-static VERSION 0.6.1 LANGUAGES CXX
+project(paho-cpp-static VERSION 1.0.0 LANGUAGES CXX
         DESCRIPTION "Statically allocated MQTT 3.1.1 client in C++17")
 
 #-------------------------------------------------------------------------------
@@ -12,16 +12,38 @@ option(MQTT_NO_RTTI        "Compile with -fno-rtti"         ON)
 option(MQTT_WERROR         "Treat warnings as errors"       OFF)
 option(MQTT_COVERAGE       "Instrument for gcov/llvm-cov"   OFF)
 option(MQTT_STACK_USAGE    "Emit GCC .su stack-usage reports" OFF)
+option(MQTT_FUZZ           "Build the libFuzzer targets (clang only)" OFF)
+
+# The prerelease suffix, if any.
+#
+# project(VERSION ...) accepts digits and dots only, so the "-rc1" of a release
+# candidate cannot live there. It lives here instead, and the two are joined
+# into MQTT_VERSION_FULL below -- which is what a tag is checked against and
+# what names a release archive. Empty for a final release.
+set(MQTT_VERSION_PRERELEASE "rc1" CACHE STRING
+    "Prerelease suffix, e.g. rc1. Empty for a final release.")
+
+if(MQTT_VERSION_PRERELEASE)
+    set(MQTT_VERSION_FULL "${PROJECT_VERSION}-${MQTT_VERSION_PRERELEASE}")
+else()
+    set(MQTT_VERSION_FULL "${PROJECT_VERSION}")
+endif()
 
 set(MQTT_ETL_DIR "" CACHE PATH
     "Path to an Embedded Template Library checkout. If empty, ETL is fetched.")
 
+# The interop job builds a second broker to test against, from an unpacked
+# minimosq headers release. Empty means the broker is not built, which is the
+# default: nothing in the library or the unit suite depends on it.
+set(MQTT_MINIMOSQ_DIR "" CACHE PATH
+    "Path to an unpacked minimosq headers release. Enables the interop broker.")
+
 # The dependency pin, in one place. tools/pins.py reads these and checks that
 # every workflow cache key agrees, so the version cannot drift between here and
 # CI without the build saying so.
-set(MQTT_ETL_TAG "20.39.4" CACHE STRING
+set(MQTT_ETL_TAG "20.48.1" CACHE STRING
     "ETL release that MQTT_ETL_COMMIT corresponds to. Documentation for humans.")
-set(MQTT_ETL_COMMIT "081e920302e4062dbd122fc3c86255825ccaa666" CACHE STRING
+set(MQTT_ETL_COMMIT "7f290365a9f1b72bf89b4b77ec7dbe39b228bd8e" CACHE STRING
     "Exact ETL commit to fetch. This is the pin; the tag above only names it.")
 
 # Treat this as a subproject when someone add_subdirectory()s us.
@@ -97,14 +119,15 @@ target_compile_definitions(mqtt_etl INTERFACE
 if(MQTT_ETL_DIR)
     # SYSTEM keeps our -Wconversion/-Wold-style-cast pass from drowning in
     # diagnostics about a third-party header we do not maintain.
-    target_include_directories(mqtt_etl SYSTEM INTERFACE "${MQTT_ETL_DIR}/include")
+    target_include_directories(mqtt_etl SYSTEM INTERFACE
+        "$<BUILD_INTERFACE:${MQTT_ETL_DIR}/include>")
 else()
     include(FetchContent)
 
     # Pinned by commit, not by tag.
     #
     # A tag is a mutable ref. The same name can be moved to different content,
-    # and nothing in a build that only records "20.39.4" would notice -- which
+    # and nothing in a build that only records the tag would notice -- which
     # makes the build neither reproducible nor auditable, and is exactly the
     # supply-chain question an integrator has to answer about every dependency
     # they ship. The commit is immutable; the tag is kept alongside it because
@@ -122,7 +145,8 @@ else()
         GIT_TAG        ${MQTT_ETL_COMMIT})
     FetchContent_MakeAvailable(etl)
     get_target_property(_etl_includes etl INTERFACE_INCLUDE_DIRECTORIES)
-    target_include_directories(mqtt_etl SYSTEM INTERFACE ${_etl_includes})
+    target_include_directories(mqtt_etl SYSTEM INTERFACE
+        "$<BUILD_INTERFACE:${_etl_includes}>")
 endif()
 
 #-------------------------------------------------------------------------------
@@ -242,7 +266,10 @@ if(MQTT_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-if(MQTT_BUILD_EXAMPLES AND UNIX)
+# Not UNIX-only any more: ip_publisher builds on Windows against
+# winsock_transport.hpp. examples/CMakeLists.txt decides which demos a platform
+# gets.
+if(MQTT_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
@@ -250,12 +277,84 @@ endif()
 # Install
 #-------------------------------------------------------------------------------
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
-install(TARGETS paho_cpp_static ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+# ETL is a *public* dependency: it appears in this library's headers, so a
+# consumer compiles against it whether or not they name it themselves. An
+# exported package config therefore has to say where ETL comes from, and a
+# config that resolves a public dependency to the wrong copy is worse than no
+# config at all.
+#
+# So it is not guessed at on the consumer's machine. How ETL was satisfied is
+# known here, at configure time, and is baked into the generated config:
+#
+#   fetched by us     -> those exact headers are installed with the library, in
+#                        a directory of their own, and the config points at
+#                        them. Nothing to find.
+#   MQTT_ETL_DIR      -> the consumer already manages ETL, so the config
+#                        requires find_package(etl) and says so if it fails.
+#
+# ETL only installs itself when it is the top-level project, so under
+# FetchContent there is no installed ETL for a consumer to find. That is what
+# makes the first branch the default rather than an option.
+if(MQTT_ETL_DIR)
+    set(_mqtt_vendor_etl_default OFF)
+else()
+    set(_mqtt_vendor_etl_default ON)
+endif()
+
+option(MQTT_INSTALL_ETL
+       "Install the ETL headers this library was built against alongside it"
+       ${_mqtt_vendor_etl_default})
+
+# Its own directory, so a vendored copy cannot collide with an ETL the consumer
+# installs into the same prefix.
+set(MQTT_ETL_INSTALL_INCLUDEDIR
+    "${CMAKE_INSTALL_INCLUDEDIR}/paho-cpp-static/vendor")
+
+if(MQTT_INSTALL_ETL)
+    target_include_directories(mqtt_etl SYSTEM INTERFACE
+        "$<INSTALL_INTERFACE:${MQTT_ETL_INSTALL_INCLUDEDIR}>")
+endif()
+
+set_target_properties(mqtt_etl PROPERTIES EXPORT_NAME etl)
+
+install(TARGETS paho_cpp_static mqtt_etl
+        EXPORT paho-cpp-staticTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-# No install(EXPORT) on purpose. ETL is a *public* dependency -- it appears in
-# this library's headers -- so an exported package config would have to re-find
-# ETL on the consumer's machine, and a config file that gets that wrong is worse
-# than none at all. Consume this project with add_subdirectory() or FetchContent
-# and link mqtt::client, which carries the ETL include path with it.
+if(MQTT_INSTALL_ETL)
+    if(MQTT_ETL_DIR)
+        set(_mqtt_etl_header_dir "${MQTT_ETL_DIR}/include/etl")
+    else()
+        set(_mqtt_etl_header_dir "${etl_SOURCE_DIR}/include/etl")
+    endif()
+
+    install(DIRECTORY "${_mqtt_etl_header_dir}"
+            DESTINATION "${MQTT_ETL_INSTALL_INCLUDEDIR}")
+endif()
+
+install(EXPORT paho-cpp-staticTargets
+        NAMESPACE mqtt::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/paho-cpp-static)
+
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/paho-cpp-staticConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/paho-cpp-staticConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/paho-cpp-static
+    PATH_VARS MQTT_ETL_INSTALL_INCLUDEDIR)
+
+# The numeric version only. A release candidate compares equal to the release
+# it precedes, because CMake's version comparison has no notion of a suffix --
+# so a consumer pinning `1.0.0 EXACT` is satisfied by 1.0.0-rc1. The full
+# version, suffix included, is recorded in the config file itself.
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/paho-cpp-staticConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+
+install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/paho-cpp-staticConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/paho-cpp-staticConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/paho-cpp-static)

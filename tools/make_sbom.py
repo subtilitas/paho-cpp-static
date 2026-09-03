@@ -79,19 +79,19 @@ def git_commit(repo: Path) -> str | None:
 
 def cyclonedx(pins, commit: str | None) -> dict:
     """CycloneDX 1.6. Siemens' continuous-clearing consumes this shape."""
-    root_purl = f"pkg:github/subtilitas/paho-cpp-static@{pins.version}"
+    root_purl = f"pkg:github/subtilitas/paho-cpp-static@{pins.version_full}"
     # The dependency's PURL names the commit rather than the tag. The commit is
     # what the build fetches and the only identifier that cannot be moved --
     # which is the entire question an SBOM reader is asking.
     etl_purl = f"pkg:github/ETLCPP/etl@{pins.etl_commit}"
 
-    serial = uuid.uuid5(_NS, f"{pins.version}|{pins.etl_commit}|{commit or ''}")
+    serial = uuid.uuid5(_NS, f"{pins.version_full}|{pins.etl_commit}|{commit or ''}")
 
     root = {
         "type": "library",
         "bom-ref": root_purl,
         "name": "paho-cpp-static",
-        "version": pins.version,
+        "version": pins.version_full,
         "description": "Statically allocated MQTT 3.1.1 client in C++17",
         "scope": "required",
         "licenses": [{"license": {"id": "MIT"}}],
@@ -143,7 +143,7 @@ def cyclonedx(pins, commit: str | None) -> dict:
             "tools": {"components": [{
                 "type": "application",
                 "name": "make_sbom.py",
-                "version": pins.version,
+                "version": pins.version_full,
                 "author": SUPPLIER,
             }]},
             "component": root,
@@ -168,20 +168,20 @@ def spdx(pins, commit: str | None) -> dict:
     # the whole reason for pinning by commit.
     etl_download = f"git+{ETL_REPO}.git@{pins.etl_commit}"
     root_download = (f"git+{REPO_URL}.git@{commit}" if commit
-                     else f"{REPO_URL}/releases/tag/v{pins.version}")
+                     else f"{REPO_URL}/releases/tag/v{pins.version_full}")
 
     namespace = (f"{REPO_URL}/spdx/"
-                 f"{pins.version}-{uuid.uuid5(_NS, pins.etl_commit + (commit or ''))}")
+                 f"{pins.version_full}-{uuid.uuid5(_NS, pins.etl_commit + (commit or ''))}")
 
     return {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
-        "name": f"paho-cpp-static-{pins.version}",
+        "name": f"paho-cpp-static-{pins.version_full}",
         "documentNamespace": namespace,
         "creationInfo": {
             "created": timestamp(),
-            "creators": [f"Tool: make_sbom.py-{pins.version}",
+            "creators": [f"Tool: make_sbom.py-{pins.version_full}",
                          f"Organization: {SUPPLIER}"],
             "licenseListVersion": "3.23",
         },
@@ -189,7 +189,7 @@ def spdx(pins, commit: str | None) -> dict:
             {
                 "SPDXID": root_id,
                 "name": "paho-cpp-static",
-                "versionInfo": pins.version,
+                "versionInfo": pins.version_full,
                 "downloadLocation": root_download,
                 "filesAnalyzed": False,
                 "homepage": REPO_URL,
@@ -201,7 +201,7 @@ def spdx(pins, commit: str | None) -> dict:
                     "referenceCategory": "PACKAGE-MANAGER",
                     "referenceType": "purl",
                     "referenceLocator":
-                        f"pkg:github/subtilitas/paho-cpp-static@{pins.version}",
+                        f"pkg:github/subtilitas/paho-cpp-static@{pins.version_full}",
                 }],
             },
             {

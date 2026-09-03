@@ -2,13 +2,84 @@
 
 Notable changes to this project, newest first.
 
-The version line is **0.x**, where a breaking change is what a minor bump is
-for. There is no 1.0 promise yet, so removing or renumbering something public
-costs a minor version rather than a major one.
+From 1.0.0 the project follows semantic versioning: a major bump is the only
+thing that may break code using the covered surface correctly.
+[docs/compatibility.md](docs/compatibility.md) states what is covered, what is
+not, and the rules the `Error` numbering follows.
+
+Releases before 1.0.0 were a 0.x line, where a breaking change cost a minor
+version rather than a major one. None of those guarantees applied to them.
 
 `CMakeLists.txt` is the single source of truth for the version: `release.yml`
 refuses a tag that disagrees with it. The entries here are a record, not a
 second declaration that could drift.
+
+## [1.0.0-rc1] — 2026-09-03
+
+First release candidate for 1.0. The API is frozen as described in
+[docs/compatibility.md](docs/compatibility.md); this candidate exists so that
+freeze can be found wrong before it becomes a promise.
+
+### Added
+
+- **A compatibility policy.** What a version number covers, what it does not,
+  and the rule the `Error` numbering now follows.
+- **Explicit `Error` values**, pinned by `tests/test_error_values.cpp` at
+  compile time and again at run time. Removing an enumerator renumbers every
+  one after it, which is invisible at every call site and silently wrong for
+  anything that persisted or transmitted the value. It happened once, in 0.6.0.
+  It now fails the build.
+- **A temporary callable is rejected at compile time.** A callback slot stores
+  a pointer to the callable, so one bound to a temporary was left pointing at
+  nothing. ETL 20.48.1 deletes construction from an rvalue callable, but its
+  constraint exempts anything convertible to a function pointer — which a
+  capture-less lambda is, and a capture-less lambda is what a caller writes
+  inline. `mqtt::detail::Handler` closes that case. `sizeof(Client<Cfg>)` is
+  unchanged. Three cases under `tests/compile_fail/` hold it, including a
+  positive control so a slot that rejected everything could not pass.
+- **`install(EXPORT)` and `find_package(paho-cpp-static)`.** ETL appears in the
+  public headers, so the generated config states where ETL comes from rather
+  than guessing: a build that fetched ETL installs those exact headers beside
+  the library and points at them; a build given `MQTT_ETL_DIR` requires
+  `find_package(etl)` and says so if it is missing. `tests/consumer/` is built
+  out of tree against the install prefix on every push, with the build tree
+  deleted first so a leaked build path fails there rather than downstream.
+- **Fuzzing.** libFuzzer targets over the decoders and over the whole receive
+  path, with a minimised corpus in `tests/fuzz/corpus/`. CI replays the corpus
+  as a deterministic gate and then explores for three minutes. 200 000 codec
+  and 100 000 client executions under ASan and UBSan found nothing.
+- **A second broker in interop.** The client runs against
+  [minimosq](https://github.com/subtilitas/minimosq-mqtt) as well as Mosquitto.
+  minimosq reports protocol violations, refusals, failed sends and dropped
+  deliveries through an observer, so that job asserts on typed events rather
+  than on words in a log.
+- **A Winsock transport**, `examples/winsock_transport.hpp`, with
+  `examples/win_clock.hpp`. `ip_publisher` selects the Windows pair or the
+  POSIX pair and is otherwise the same program, so the Windows CI job compiles
+  the transport on every push. The IPv4 parser moved to `examples/ipv4.hpp`,
+  shared by both transports rather than duplicated.
+- **Prerelease versioning.** `MQTT_VERSION_PRERELEASE` in `CMakeLists.txt`
+  carries the suffix that `project(VERSION ...)` cannot hold. `release.yml`
+  checks a tag against the joined version and marks the release a prerelease
+  from the declaration, so a tag alone cannot turn a candidate into a final
+  release.
+
+### Changed
+
+- **ETL 20.39.4 → 20.48.1.** This moves every measured RAM figure: sensor
+  1064 → 1032, `DefaultConfig` 4600 → 4544, reliable sensor 3624 → 3568,
+  gateway 23 456 → 23 368 bytes. Flash is unchanged at 7866 bytes for the
+  non-template core. Each subscription still costs `max_topic_len + 64` bytes.
+- Memory quantities are written in KiB and MiB. `4 KB buffers` meant 4096
+  bytes.
+
+### Fixed
+
+- **The README understated flash.** It said "roughly 6.9 KB for the
+  non-template core"; it measures 7866 bytes, 7.7 KiB, and did so before the
+  ETL bump as well. Anyone sizing a part from that figure was 900 bytes short.
+- `docs/static-analysis.md` described the `Error` enum's size in terms of a
+  change made in 0.2.0, quoting figures that no longer held.
 
 ## [0.6.1] — 2026-09-01
 

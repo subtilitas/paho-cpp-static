@@ -45,6 +45,7 @@
 #include <etl/span.h>
 #include <etl/string.h>
 #include <etl/string_view.h>
+#include <etl/type_traits.h>
 #include <etl/vector.h>
 
 #include "mqtt/codec.hpp"
@@ -73,6 +74,100 @@ namespace detail {
 /// Zero-capacity arrays are not portable, so tables configured to hold nothing
 /// still reserve one slot. The logical limit stays whatever the config says.
 constexpr size_t at_least_one(size_t n) noexcept { return (n > 0) ? n : 1; }
+
+/// A callback slot: a delegate that refuses a temporary callable.
+///
+/// A delegate stores a pointer to the callable rather than owning it, so one
+/// bound to a callable that dies at the end of the statement is left pointing
+/// at nothing. ETL deletes construction from an rvalue callable for that
+/// reason, but its constraint exempts anything convertible to a plain function
+/// pointer -- which a capture-less lambda is. That exemption reopens the hole
+/// for exactly the inline lambda a caller is most likely to write:
+///
+/// @code
+/// client.on_message([](const mqtt::Message& m) { handle(m); });   // rejected
+///
+/// static auto handler = [](const mqtt::Message& m) { handle(m); };
+/// client.on_message(handler);                                     // fine
+/// @endcode
+///
+/// Any lvalue the caller keeps alive binds as before -- a static, a member, or
+/// a named local that outlives the client. Only the temporary is rejected, and
+/// at compile time rather than by dangling at run time.
+///
+/// Composition rather than derivation because etl::delegate is final. It holds
+/// one delegate and nothing else, so sizeof(Client<Cfg>) is unchanged.
+template <typename Sig>
+class Handler
+{
+public:
+    /// The underlying delegate. Exposed because binding a member function goes
+    /// through its create():
+    ///
+    /// @code
+    /// using H = mqtt::Client<Cfg>::MessageHandler;
+    /// client.on_message(H::Delegate::create<Sensor, &Sensor::on_message>(sensor));
+    /// @endcode
+    ///
+    /// The object bound there must outlive the client, for the same reason a
+    /// callable must.
+    using Delegate = etl::delegate<Sig>;
+
+private:
+    /// A class type that is neither this slot nor the delegate it wraps --
+    /// i.e. a user's lambda or functor. Excluding those two lets the copy
+    /// constructor and the Delegate overload below win their own cases instead
+    /// of tying with the constructor templates.
+    ///
+    /// Declared up here because a default template argument has to see it.
+    template <typename F>
+    static constexpr bool is_foreign_callable() noexcept
+    {
+        using T = etl::decay_t<F>;
+        return etl::is_class<T>::value && !etl::is_same<T, Handler>::value &&
+               !etl::is_same<T, Delegate>::value;
+    }
+
+public:
+    /// An unset slot. call_if() on one does nothing.
+    Handler() noexcept = default;
+
+    /// Delegates built by Delegate::create() arrive as the delegate type.
+    Handler(const Delegate& d) noexcept : d_(d) {}
+
+    /// A named callable, whose lifetime the caller owns. F deduces the const
+    /// on a const lvalue, so this one template covers both.
+    template <typename F, typename = etl::enable_if_t<is_foreign_callable<F>()>>
+    Handler(F& f) noexcept : d_(f)
+    {
+    }
+
+    /// A temporary callable. Deleted rather than left out, so the diagnostic
+    /// names this constructor and its comment.
+    template <typename F, typename = etl::enable_if_t<!etl::is_lvalue_reference<F>::value &&
+                                                      is_foreign_callable<F>()>>
+    Handler(F&&) = delete;
+
+    /// Invoke if a callable is bound; do nothing if not.
+    template <typename... A>
+    auto call_if(A&&... a) const
+    {
+        return d_.call_if(static_cast<A&&>(a)...);
+    }
+
+    /// Invoke unconditionally. Undefined if nothing is bound, exactly as for
+    /// the underlying delegate -- check is_valid() first.
+    template <typename... A>
+    auto operator()(A&&... a) const
+    {
+        return d_(static_cast<A&&>(a)...);
+    }
+
+    bool is_valid() const noexcept { return d_.is_valid(); }
+
+private:
+    Delegate d_;
+};
 }   // namespace detail
 
 /// A single-threaded MQTT 3.1.1 client that allocates nothing after
@@ -113,17 +208,17 @@ public:
     /// Calling subscribe() or unsubscribe() from one would mutate that table
     /// mid-iteration, so don't: set a flag and act on it after step() returns.
     /// publish() is fine, as are all the introspection accessors.
-    using MessageHandler = etl::delegate<void(const Message&)>;
+    using MessageHandler = detail::Handler<void(const Message&)>;
     /// Handler invoked once the broker has accepted the CONNECT.
-    using ConnectHandler = etl::delegate<void(const ConnackInfo&)>;
+    using ConnectHandler = detail::Handler<void(const ConnackInfo&)>;
     /// Handler invoked when a session ends, with the reason it ended.
-    using DisconnectHandler = etl::delegate<void(Error)>;
+    using DisconnectHandler = detail::Handler<void(Error)>;
     /// Handler invoked when a QoS 1 or QoS 2 publish completes, given its
     /// packet id.
-    using DeliveryHandler = etl::delegate<void(uint16_t)>;
+    using DeliveryHandler = detail::Handler<void(uint16_t)>;
     /// Handler invoked on SUBACK with the packet id and the broker's granted
     /// QoS for each requested filter.
-    using SubackHandler = etl::delegate<void(uint16_t, etl::span<const uint8_t>)>;
+    using SubackHandler = detail::Handler<void(uint16_t, etl::span<const uint8_t>)>;
 
     /// Construct a client over a transport and a clock.
     ///

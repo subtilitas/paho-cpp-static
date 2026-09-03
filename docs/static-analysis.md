@@ -69,20 +69,17 @@ finding is a regression in the change that introduced it.
   longer slice it. `Client` deletes all four and defaults its destructor; it
   holds references and moving one mid-session would leave the transport
   talking to a corpse.
-- `performance-enum-size` — `Error` was `int16_t` for a couple of dozen values
-  (22 today). Now `uint8_t`, which packs better against the neighbouring members
-  and takes **eight bytes off every configuration**: `Client<DefaultConfig>` went 4608 →
-  4600, and the small and large profiles likewise.
+- `performance-enum-size` — `Error` is `uint8_t` for its 22 values. It packs
+  against the neighbouring small members rather than forcing padding around
+  them, which takes **eight bytes off every configuration** compared with the
+  two-byte enum it would otherwise be. `error.hpp` fixes the underlying type
+  explicitly, so the saving does not depend on what a compiler picks.
 
-  This is an API-visible change to a public enum, and it rests on two things.
-  The version line is 0.x, where a breaking change is what a minor bump is
-  for. And there is no ABI to break in any case: the library is consumed from
-  source via `add_subdirectory` or `FetchContent` and ships no shared library
-  and no `install(EXPORT)`, so every consumer recompiles against the header
-  that declares the enum. Only code storing an `Error` in an explicitly
-  `int16_t`-typed field is affected, and it fails to compile rather than
-  misbehaving quietly. Released in 0.2.0 and called out as breaking;
-  reverting is one line if either of those ever stops holding.
+  The underlying type and the numeric values are both part of the public API,
+  spelled out in `error.hpp` and pinned by `tests/test_error_values.cpp` at
+  compile time and again at run time. Widening the type, or renumbering an
+  enumerator, is a breaking change — see
+  [compatibility.md](compatibility.md).
 
 **Declined, and silenced in `.clang-tidy` with the reasoning recorded**
 

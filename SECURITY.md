@@ -31,9 +31,11 @@ public issue saying only that you are trying to make private contact.
 
 ## Supported versions
 
-The most recent release, and `main`. Fixes are not backported to older tags —
-the project is pre-1.0 and the API is still moving, so upgrading is expected to
-be cheap.
+The most recent release, and `main`. Fixes are not backported to older tags.
+
+Upgrading within a major version does not require source changes — see
+[docs/compatibility.md](docs/compatibility.md) — so the supported version is
+the latest one on your major line.
 
 ## Scope
 

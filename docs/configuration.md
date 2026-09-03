@@ -92,7 +92,7 @@ inflight storage = max_inflight_out × max_persisted_msg_size
 ```
 
 At the defaults that is 4 × 256 = 1024 bytes, about 22% of
-`sizeof(Client<DefaultConfig>)` — the largest single item after the two 1 KB
+`sizeof(Client<DefaultConfig>)` — the largest single item after the two 1 KiB
 buffers.
 
 The trade-off is deliberate: because the client owns a serialized copy, it can
@@ -190,7 +190,7 @@ struct SensorConfig : mqtt::DefaultConfig
 };
 ```
 
-**1064 bytes.**
+**1032 bytes.**
 
 ### Reliable sensor node
 
@@ -209,7 +209,7 @@ struct ReliableConfig : mqtt::DefaultConfig
 };
 ```
 
-**3624 bytes**, of which 1024 is the retransmission store — the price of the
+**3568 bytes**, of which 1024 is the retransmission store — the price of the
 delivery guarantee, visible rather than hidden in a heap.
 
 ### Gateway
@@ -231,7 +231,7 @@ struct GatewayConfig : mqtt::DefaultConfig
 };
 ```
 
-**23 456 bytes.** Fine on anything with external RAM, and still entirely static.
+**23 368 bytes.** Fine on anything with external RAM, and still entirely static.
 
 `tests/test_config_profiles.cpp` instantiates and exercises each of these, so
 the figures above are compiled rather than remembered.

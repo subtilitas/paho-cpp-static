@@ -16,7 +16,7 @@ env:
   # and a cache key that only names one would keep serving a stale
   # checkout of the previous content. tools/pins.py --check enforces
   # that this matches, and supply-chain.yml watches the tag itself.
-  ETL_COMMIT: 081e920302e4062dbd122fc3c86255825ccaa666
+  ETL_COMMIT: 7f290365a9f1b72bf89b4b77ec7dbe39b228bd8e
 
   GCOVR_VERSION: "7.2"
 
@@ -107,6 +107,55 @@ jobs:
         env:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: ctest --test-dir build --output-on-failure -E no_alloc
+
+  install:
+    name: Installed package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-install-${{ env.ETL_COMMIT }}
+
+      # Building inside the repository proves nothing about install(EXPORT):
+      # add_subdirectory() and FetchContent both bypass the generated config,
+      # so a broken one stays invisible until a consumer hits it. Everything
+      # below therefore happens out of tree, against the install prefix only.
+      - name: Build and install
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMQTT_BUILD_TESTS=OFF \
+            -DMQTT_BUILD_EXAMPLES=OFF \
+            -DMQTT_WERROR=ON \
+            -DCMAKE_INSTALL_PREFIX="$PWD/prefix"
+          cmake --build build --parallel
+          cmake --install build
+
+      - name: The package ships the ETL it was built against
+        run: |
+          set -euo pipefail
+          test -f prefix/include/mqtt/client.hpp
+          test -f prefix/include/paho-cpp-static/vendor/etl/version.h
+          test -f prefix/lib/cmake/paho-cpp-static/paho-cpp-staticConfig.cmake
+          test -f prefix/lib/cmake/paho-cpp-static/paho-cpp-staticTargets.cmake
+          echo "install tree is complete"
+
+      # The build tree is deleted first. If the exported config leaked a
+      # build-tree path -- the usual way an export breaks -- the consumer stops
+      # compiling here rather than on somebody else's machine.
+      - name: Consume it out of tree
+        run: |
+          set -euo pipefail
+          rm -rf build
+          cmake -S tests/consumer -B consumer-build \
+            -DCMAKE_PREFIX_PATH="$PWD/prefix"
+          cmake --build consumer-build --parallel
+          ./consumer-build/consumer
 
   coverage:
     name: Coverage
@@ -296,3 +345,189 @@ jobs:
         with:
           name: mosquitto-log
           path: mosq.log
+
+  interop-minimosq:
+    name: minimosq interop
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-minimosq-${{ env.ETL_COMMIT }}
+
+      # Mosquitto is one implementation, and a client tested against exactly
+      # one is tested against its leniency as much as against the
+      # specification. minimosq is an independent MQTT 3.1.1 implementation, so
+      # the two disagree wherever this client is wrong.
+      #
+      # This tracks minimosq's latest *release* rather than a pinned version,
+      # which is deliberate but has a cost: a release published there can fail
+      # this job here, and the failure is not in this repository. The job is
+      # separate from the ones that gate the library's own correctness for that
+      # reason. Pin MINIMOSQ_TAG below to a fixed tag to stop tracking.
+      - name: Resolve the latest minimosq release
+        id: minimosq
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          tag=$(gh release view --repo subtilitas/minimosq-mqtt \
+                  --json tagName --jq .tagName)
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "using minimosq $tag"
+
+      # The release ships headers only, so the checksum is the whole integrity
+      # story for what gets compiled in.
+      - name: Download and verify the headers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          gh release download "${{ steps.minimosq.outputs.tag }}" \
+            --repo subtilitas/minimosq-mqtt \
+            --pattern '*-headers.tar.gz*' --dir minimosq-release
+
+          cd minimosq-release
+          sha256sum --check ./*.sha256
+          tar xzf ./*-headers.tar.gz
+
+          dir=$(find . -maxdepth 1 -type d -name '*-headers' | head -1)
+          echo "MINIMOSQ_DIR=$PWD/${dir#./}" >> "$GITHUB_ENV"
+
+      - name: Build the client demo and the broker
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMQTT_BUILD_EXAMPLES=ON \
+            -DMQTT_WERROR=ON \
+            -DMQTT_MINIMOSQ_DIR="$MINIMOSQ_DIR"
+          cmake --build build --parallel --target minimosq_broker pubsub_demo
+
+      # The broker is the assertion. minimosq reports protocol violations,
+      # refusals, failed sends and dropped deliveries through an observer, and
+      # the harness exits non-zero if any of them happened -- so this does not
+      # depend on matching words in a log.
+      - name: Publish and subscribe against minimosq
+        run: |
+          set -euo pipefail
+
+          ./build/tests/minimosq_broker 1884 > minimosq.log 2>&1 &
+          bpid=$!
+
+          for _ in $(seq 1 50); do
+            if grep -q "listening on port" minimosq.log 2>/dev/null; then break; fi
+            sleep 0.1
+          done
+
+          # set -e would abort here before the status could be captured, and
+          # the broker's own verdict below is the more informative half.
+          client=0
+          timeout 120 ./build/examples/pubsub_demo 127.0.0.1 1884 demo/topic || client=$?
+
+          kill -TERM "$bpid" 2>/dev/null || true
+          if wait "$bpid"; then
+            broker=0
+          else
+            broker=$?
+          fi
+
+          echo "--- broker ---"
+          cat minimosq.log
+
+          if [ "$client" -ne 0 ]; then
+            echo "the client failed against minimosq"
+            exit 1
+          fi
+          if [ "$broker" -ne 0 ]; then
+            echo "minimosq reported events the client should not have caused"
+            exit 1
+          fi
+          echo "clean session against minimosq ${{ steps.minimosq.outputs.tag }}"
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### minimosq interop"
+            echo
+            echo "Broker: minimosq \`${{ steps.minimosq.outputs.tag }}\`, headers release."
+            echo
+            echo '```'
+            tail -20 minimosq.log 2>/dev/null || echo "no broker log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the broker log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: minimosq-log
+          path: minimosq.log
+
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache the ETL checkout
+        uses: actions/cache@v6
+        with:
+          path: build/_deps
+          key: etl-fuzz-${{ env.ETL_COMMIT }}
+
+      - name: Configure
+        env:
+          CXX: clang++
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DMQTT_FUZZ=ON \
+            -DMQTT_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # The gate. Replaying the checked-in corpus is deterministic -- -runs is
+      # a count, not a clock -- so this either passes or names an input, and it
+      # does not depend on how loaded the runner is.
+      - name: Replay the corpus
+        run: ctest --test-dir build -L fuzz --output-on-failure
+
+      # The search. This one is timed, so it explores a different amount on
+      # every run and is not a gate in the same sense: it fails only if it
+      # actually finds something, which is worth failing for.
+      - name: Explore
+        run: |
+          set -euo pipefail
+          mkdir -p findings
+
+          for target in fuzz_codec fuzz_client; do
+            echo "::group::$target"
+            ./build/tests/"$target" \
+              -max_total_time=180 \
+              -max_len=256 \
+              -print_final_stats=1 \
+              -artifact_prefix=findings/"$target"- \
+              tests/fuzz/corpus/"$target"
+            echo "::endgroup::"
+          done
+
+      # A crash writes its input here. Without it the run says a crash happened
+      # and throws away the only thing that reproduces it.
+      - name: Upload any findings
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-findings
+          path: findings/
+          if-no-files-found: ignore
