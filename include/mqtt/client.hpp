@@ -259,7 +259,9 @@ public:
     /// Fallback handler for messages no per-subscription handler matched.
     ///
     /// Dispatch is by filter match, not by "first match wins": a message that
-    /// matches several subscriptions is delivered to each of their handlers.
+    /// matches several subscriptions is delivered to each of their handlers, in
+    /// table order -- until one of them ends the session, after which the rest
+    /// are not called.
     /// Subscribing to both "a/#" and "a/b" therefore sees "a/b" twice. This
     /// fallback runs only when no per-subscription handler matched at all.
     void on_message(MessageHandler h) noexcept { on_message_ = h; }
@@ -599,14 +601,20 @@ public:
     /// keep-alive interval. Never blocks.
     ///
     /// Returns Error::Ok when everything is fine (including when there was
-    /// simply nothing to do). Any other value means the session has just ended;
-    /// the same value was passed to the on_disconnect handler.
+    /// simply nothing to do). Any other value means the session has just ended
+    /// and the same value was passed to the on_disconnect handler -- with one
+    /// exception, Error::Reentrant, which means only that this call came from
+    /// inside a handler and did nothing. The session is untouched and no
+    /// handler was notified, so `if (step() != Error::Ok) reconnect();` would
+    /// tear down a healthy connection; a handler that calls step() should check
+    /// for that code, and an application that never does cannot receive it.
     ///
-    /// Not callable from a handler. A handler runs inside step(), on the buffer
-    /// step() is in the middle of draining, so a nested call re-drains the same
-    /// bytes, re-enters the same handler and recurses without bound -- which
-    /// would break the bounded-stack guarantee this library measures in CI.
-    /// The nested call returns Error::Reentrant and does nothing instead.
+    /// Refused from a handler, rather than forbidden there: the nested call
+    /// returns Error::Reentrant and does nothing, and the session carries on.
+    /// A handler runs inside step(), on the buffer step() is in the middle of
+    /// draining, so a nested call would re-drain the same bytes, re-enter the
+    /// same handler and recurse without bound -- breaking the bounded-stack
+    /// guarantee this library measures on target in CI.
     Error step() noexcept
     {
         if (in_step_)
@@ -656,6 +664,18 @@ private:
             if (e != Error::Ok)
                 return shutdown(e);
         }
+
+        // A handler may have ended this session and started another one --
+        // abort() then connect(), which is how an application reacts to a
+        // "reconfigure and reconnect" message. The new CONNECT is queued but
+        // the transport is closed, and transport_.connect() runs only at the
+        // top of this function, so everything below would write to a torn-down
+        // transport. Leave the rest to the next step(), which starts there.
+        //
+        // Only connect() sets Connecting, and the block at the top already
+        // dealt with the case where this pass began that way.
+        if (state_ == State::Connecting)
+            return Error::Ok;
 
         if (state_ == State::AwaitingConnack)
         {
@@ -898,6 +918,18 @@ private:
             const Error e = drain_rx();
             if (e != Error::Ok)
                 return e;
+
+            // drain_rx succeeded, but a handler may have replaced the session
+            // while it ran: abort() followed by connect() leaves Connecting
+            // with the transport closed and a new CONNECT queued. Another
+            // recv() here would fail on that closed transport and be reported
+            // as this session failing, which would tear the new one down
+            // before step() had a chance to establish it.
+            //
+            // A handler that ends the session without starting another leaves
+            // Idle, and drain_rx has already returned the reason above.
+            if (state_ == State::Connecting)
+                return Error::Ok;
 
             // If the buffer is still full after draining, the pending packet
             // cannot fit and never will.
@@ -1274,6 +1306,13 @@ private:
             {
                 s.handler(m);
                 handled = true;
+
+                // A handler ended the session. The handlers after it would be
+                // told about a message that arrived on a connection which no
+                // longer exists, and every client call they made on the
+                // strength of it would be refused.
+                if (state_ != State::Connected)
+                    return;
             }
         }
 

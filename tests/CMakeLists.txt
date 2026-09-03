@@ -23,6 +23,14 @@ target_include_directories(mqtt_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(NOT MSVC)
     target_compile_options(mqtt_tests PRIVATE -Wall -Wextra -Wpedantic)
+
+    # Under MQTT_WERROR the tests are held to the same standard as the library.
+    # -Wswitch caught a test whose handler silently did nothing -- an enumerator
+    # missing from a switch -- and a warning in a wall of build output is easy
+    # to scroll past. A failed build is not.
+    if(MQTT_WERROR)
+        target_compile_options(mqtt_tests PRIVATE -Werror)
+    endif()
 endif()
 
 add_test(NAME mqtt_tests COMMAND mqtt_tests)

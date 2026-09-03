@@ -46,11 +46,14 @@ enum class Act
     Abort,
     Disconnect,
     Step,
+    AbortThenConnect,
 };
 
-Act   g_act        = Act::Nothing;
-int   g_calls      = 0;
-Error g_step_error = Error::Ok;
+Act   g_act          = Act::Nothing;
+int   g_calls        = 0;
+int   g_disconnects  = 0;
+int   g_second_calls = 0;
+Error g_step_error   = Error::Ok;
 
 /// The client the handlers act on. A pointer rather than a reference because
 /// each case builds its own fixture.
@@ -74,16 +77,33 @@ void act() noexcept
         case Act::Abort: g_client->abort(); break;
         case Act::Disconnect: (void)g_client->disconnect(); break;
         case Act::Step: g_step_error = g_client->step(); break;
+        case Act::AbortThenConnect:
+        {
+            // How an application reacts to a "reconfigure and reconnect"
+            // message: end this session and immediately start another.
+            g_client->abort();
+
+            ConnectOptions opts;
+            opts.client_id     = etl::string_view("cid2");
+            opts.keep_alive_s  = 10;
+            opts.clean_session = true;
+            (void)g_client->connect(opts);
+            break;
+        }
         case Act::Nothing: break;
     }
 }
 
 // Named, file-scope handlers: a callback slot stores a pointer to the callable,
 // so a temporary would not compile.
-auto on_msg_act      = [](const Message&) noexcept { act(); };
-auto on_connect_act  = [](const ConnackInfo&) noexcept { act(); };
-auto on_suback_act   = [](uint16_t, etl::span<const uint8_t>) noexcept { act(); };
-auto on_delivery_act = [](uint16_t) noexcept { act(); };
+auto on_msg_act          = [](const Message&) noexcept { act(); };
+auto on_connect_act      = [](const ConnackInfo&) noexcept { act(); };
+auto on_suback_act       = [](uint16_t, etl::span<const uint8_t>) noexcept { act(); };
+auto on_delivery_act     = [](uint16_t) noexcept { act(); };
+auto on_disconnect_count = [](Error) noexcept { ++g_disconnects; };
+
+/// A second per-subscription handler, to watch the fan-out.
+auto on_msg_second = [](const Message&) noexcept { ++g_second_calls; };
 
 struct Fixture
 {
@@ -93,10 +113,12 @@ struct Fixture
 
     Fixture() noexcept
     {
-        g_client     = &client;
-        g_act        = Act::Nothing;
-        g_calls      = 0;
-        g_step_error = Error::Ok;
+        g_client       = &client;
+        g_act          = Act::Nothing;
+        g_calls        = 0;
+        g_disconnects  = 0;
+        g_second_calls = 0;
+        g_step_error   = Error::Ok;
     }
 
     ~Fixture() noexcept { g_client = nullptr; }
@@ -263,5 +285,74 @@ TEST(a_second_packet_after_an_aborting_handler_is_discarded)
     f.client.step();
 
     CHECK(g_calls == 1);
+    CHECK(f.client.state() == State::Idle);
+}
+
+TEST(a_handler_that_reconnects_does_not_write_to_the_closed_transport)
+{
+    // abort() tears the transport down; connect() queues a new CONNECT and
+    // moves to Connecting. transport_.connect() runs only at the top of
+    // step(), so anything further in the same pass would write that CONNECT to
+    // a transport that no longer exists -- and a faithful transport refuses,
+    // which killed the new session before its CONNECT ever left the queue.
+    Fixture f;
+    f.client.on_message(on_msg_act);
+    f.client.on_disconnect(on_disconnect_count);
+    REQUIRE(f.bring_up());
+    REQUIRE(f.subscribe_ok("a/b"));
+
+    f.transport.clear_sent();
+
+    g_act = Act::AbortThenConnect;
+    sim::push_publish(f.transport, "a/b", "reconfigure", QoS::AtMostOnce, 0);
+    const Error e = f.client.step();
+
+    CHECK(g_calls == 1);
+
+    // The old session ended once, not twice.
+    CHECK(g_disconnects == 1);
+
+    // The new session is pending, and this step reported no failure.
+    CHECK(e == Error::Ok);
+    CHECK(f.client.state() == State::Connecting);
+
+    // Nothing was written while the transport was closed.
+    CHECK(f.transport.sent.empty());
+
+    // The next step establishes the transport and sends the new CONNECT.
+    const Error e2 = f.client.step();
+    CHECK(e2 == Error::Ok);
+    CHECK(!f.transport.sent.empty());
+    CHECK(f.client.state() == State::AwaitingConnack);
+}
+
+TEST(dispatch_stops_once_a_handler_has_ended_the_session)
+{
+    // Two filters match one topic. The first handler ends the session, so the
+    // second must not be told about a message on a connection that is gone.
+    Fixture f;
+    f.client.on_disconnect(on_disconnect_count);
+    REQUIRE(f.bring_up());
+
+    uint16_t id = 0;
+    REQUIRE(f.client.subscribe(etl::string_view("a/#"), QoS::AtMostOnce,
+                               ReClient::MessageHandler(on_msg_act), &id) == Error::Ok);
+    f.client.step();
+    const uint8_t codes[] = {0};
+    sim::push_suback(f.transport, id, codes, 1);
+    f.client.step();
+
+    REQUIRE(f.client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce,
+                               ReClient::MessageHandler(on_msg_second), &id) == Error::Ok);
+    f.client.step();
+    sim::push_suback(f.transport, id, codes, 1);
+    f.client.step();
+
+    g_act = Act::Abort;
+    sim::push_publish(f.transport, "a/b", "hello", QoS::AtMostOnce, 0);
+    f.client.step();
+
+    CHECK(g_calls == 1);
+    CHECK(g_second_calls == 0);
     CHECK(f.client.state() == State::Idle);
 }

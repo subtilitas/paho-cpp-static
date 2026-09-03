@@ -38,3 +38,9 @@ Thumbs.db
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Findings from test suites kept outside this repository. They report on a
+# specific commit and are answered in CHANGELOG.md and in the tests the
+# findings produce, so the report itself is working material rather than
+# repository content.
+FINDINGS_*.md
