@@ -374,6 +374,7 @@ from the suite itself.
 | [docs/porting.md](docs/porting.md) | implementing `Transport` and `Clock`, platform notes, TLS, verifying a port |
 | [docs/configuration.md](docs/configuration.md) | every config knob, sizing guidance, worked profiles |
 | [docs/comparison-with-paho.md](docs/comparison-with-paho.md) | differences from Eclipse Paho MQTT C and the reasoning |
+| [docs/testing.md](docs/testing.md) | what is verified and how — suite, sanitizers, coverage, fuzzing, interop, and what is not tested |
 | [docs/static-analysis.md](docs/static-analysis.md) | what CodeQL, clang-tidy and clang-format report, and which of them gate |
 | [docs/misra.md](docs/misra.md) | MISRA C++:2023 self-assessment — constructs measured, two deviations, what a real claim would need |
 | [docs/compatibility.md](docs/compatibility.md) | what a version number promises: the covered surface, what is excluded, the `Error` numbering rule |

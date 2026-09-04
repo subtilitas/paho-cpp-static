@@ -141,6 +141,26 @@ large-but-unimportant messages still go out cheaply.
 Once PUBREC arrives the slot's buffer is reused for the much smaller PUBREL, so
 the footprint stays flat across the QoS 2 handshake rather than doubling.
 
+#### What a successful `publish()` means
+
+It means the packet was accepted for transmission, and at QoS > 0 that the
+broker acknowledged it. It does not mean the broker stored or forwarded it.
+
+A broker with a smaller payload or topic bound than the client's may acknowledge
+a PUBLISH and drop it. Measured against a broker whose payload limit is 512
+bytes: a 513-byte payload is acknowledged, the connection survives, and the
+message is silently discarded — `publish()` returned `Ok`, the QoS 1 handshake
+completed, and nothing further reaches the caller. A topic one byte over the
+broker's limit is treated as a protocol violation instead and closes the
+connection, which the caller does see, as `on_disconnect(TransportClosed)`.
+
+MQTT 3.1.1 has no error acknowledgement for PUBLISH and no way for a broker to
+advertise its limits, so there is nothing this library can return instead. Size
+`max_persisted_msg_size` and `max_topic_len` against the broker's documented
+limits rather than against the client's own. The subscribe path does surface a
+refusal, because SUBACK carries a per-filter return code and the client passes
+it to the callback.
+
 ### `max_inflight_in` — default 4
 
 Packet ids of inbound QoS 2 messages received but not yet released by PUBREL,

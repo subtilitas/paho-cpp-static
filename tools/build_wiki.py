@@ -47,6 +47,7 @@ PROSE_PAGES = [
     ("docs/porting.md", "Porting", "Porting guide"),
     ("docs/configuration.md", "Configuration", "Configuration"),
     ("docs/comparison-with-paho.md", "Comparison-with-Paho", "Comparison with Paho"),
+    ("docs/testing.md", "Testing", "Testing"),
     ("docs/static-analysis.md", "Static-Analysis", "Static analysis"),
     ("docs/misra.md", "MISRA", "MISRA C++:2023"),
     ("docs/compatibility.md", "Compatibility", "Compatibility"),
@@ -868,6 +869,8 @@ SUITE_BLURB = {
                        "fragmentation, back-pressure and teardown.",
     "test_no_alloc.cpp": "Global `operator new` replaced with a counter, then a "
                          "full session driven through it.",
+    "test_wraparound.cpp": "The 16-bit packet id wrapping 65535 to 1, and the "
+                           "32-bit millisecond clock crossing 2^32.",
 }
 
 
