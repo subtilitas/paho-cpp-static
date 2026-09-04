@@ -101,9 +101,9 @@ Measured by gcovr 7.2 on every push, against floors of 92% line and 85% branch:
 
 | | Covered | Total | % |
 |---|---|---|---|
-| Lines | 1221 | 1293 | 94.4% |
-| Branches | 850 | 961 | 88.4% |
-| Functions | 585 | 766 | 76.4% |
+| Lines | 1224 | 1295 | 94.5% |
+| Branches | 852 | 961 | 88.7% |
+| Functions | 623 | 823 | 75.7% |
 
 Function coverage is reported and not gated. The client is a template
 instantiated at several configurations, so each instantiation counts separately
@@ -112,10 +112,15 @@ uncovered. `tools/coverage.py --check` fails the build if the figures in
 `README.md` drift from the measurement by more than 0.5 points.
 
 The gcovr version changes the answer, so it is pinned. On identical coverage
-data, gcovr 7.2 reports 94.4% of 1293 lines and gcovr 8.6 reports 44.7% of
-8906: the two disagree about how to count a line in an instantiated template,
+data, gcovr 7.2 reports 94.5% of 1295 lines and gcovr 8.6 reports 45.2% of
+9487: the two disagree about how to count a line in an instantiated template,
 and 8.6 counts each instantiation separately. A local measurement with the
 wrong version looks exactly like a large regression.
+
+The function total also depends on the compiler. The covered count is the same
+everywhere, but GCC 13.3 locally reports 1030 functions where the CI runner
+reports 823, for the same reason. Lines and branches agree, which is why those
+two are the gated figures.
 
 ## Fuzzing
 
