@@ -11,7 +11,7 @@ no external framework. The library is compiled `-fno-exceptions`, so a framework
 that reports failures by throwing would undermine the property under test.
 
 The per-suite breakdown and the full list of case names are generated from the
-sources on every push — see the
+sources on every pull request and every push to `main` — see the
 [Test inventory](https://github.com/subtilitas/paho-cpp-static/wiki/Test-Inventory)
 page rather than a copy here, which would drift.
 
@@ -72,7 +72,7 @@ rejected every callable from passing.
 ## Sanitizers
 
 AddressSanitizer and UndefinedBehaviorSanitizer, `halt_on_error=1`, on every
-push:
+pull request and every push to `main`:
 
 ```bash
 cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DMQTT_WERROR=ON \
@@ -97,7 +97,8 @@ fails on growth, which is what backs the claim that no protocol path recurses.
 
 ## Coverage
 
-Measured by gcovr 7.2 on every push, against floors of 92% line and 85% branch:
+Measured by gcovr 7.2 on every pull request and every push to `main`, against
+floors of 92% line and 85% branch:
 
 | | Covered | Total | % |
 |---|---|---|---|
@@ -148,7 +149,8 @@ libFuzzer writes new inputs into the corpus directory it is given. Minimise with
 
 ## Interoperability
 
-Against two brokers on a real TCP socket, on every push:
+Against two brokers on a real TCP socket, on every pull request and every push
+to `main`:
 
 - **Mosquitto**, installed from the distribution package.
 - **minimosq**, built against the published headers tarball rather than a
@@ -166,7 +168,8 @@ the job fails on any of them.
 
 The library pins one ETL commit, but a consumer who already depends on ETL
 builds against whatever they have. CI builds and runs the full suite against
-eight ETL releases on every push, so the supported range is measured rather
+eight ETL releases on every pull request and every push to `main`, so the
+supported range is measured rather
 than assumed:
 
 20.39.0, 20.40.0, 20.40.1, 20.41.0, 20.43.0, 20.44.0, 20.46.0 and the pinned
