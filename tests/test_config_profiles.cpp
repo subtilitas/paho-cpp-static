@@ -238,3 +238,105 @@ TEST(config_with_one_inbound_slot_holds_back_a_second_qos2_message)
     CHECK(r.client.step() == Error::Ok);
     CHECK_EQ(sim::count_sent(r.transport, PacketType::Pubrec), size_t{2});
 }
+
+namespace {
+
+/// One capacity zeroed each, because the guards run in a fixed order and two
+/// zeroes at once would only ever report the first.
+struct ZeroPendingAcks : DefaultConfig
+{
+    static constexpr size_t max_pending_acks = 0;
+};
+
+struct ZeroInflightIn : DefaultConfig
+{
+    static constexpr size_t max_inflight_in = 0;
+};
+
+struct ZeroSubscriptions : DefaultConfig
+{
+    static constexpr size_t max_subscriptions = 0;
+};
+
+/// Bring a client up far enough to exercise a capacity guard.
+template <typename Cfg>
+bool connect_client(Client<Cfg>& client, fakes::FakeTransport& transport) noexcept
+{
+    ConnectOptions opts;
+    opts.client_id     = etl::string_view("cid");
+    opts.keep_alive_s  = 10;
+    opts.clean_session = true;
+
+    if (client.connect(opts) != Error::Ok)
+        return false;
+
+    client.step();
+    sim::push_connack(transport, false);
+    client.step();
+    return client.is_connected();
+}
+
+}   // namespace
+
+TEST(a_capacity_configured_to_zero_means_none)
+{
+    // Every table is rounded up by detail::at_least_one so a zero-sized array
+    // is never declared. A guard written against the storage rather than
+    // against the configured limit therefore answers for one slot when the
+    // config asked for none, and `= 0` neither forbids the operation nor
+    // reports it -- it just quietly behaves like `= 1`.
+    //
+    // All four zero-able capacities are checked here because two of them read
+    // the configured value and two read the storage, and nothing but a test
+    // distinguishes the two.
+
+    // max_inflight_out: documented as forbidding QoS > 0 entirely.
+    {
+        fakes::FakeTransport transport;
+        fakes::FakeClock     clock;
+        Client<TinyConfig>   client{transport, clock};
+        REQUIRE(connect_client(client, transport));
+
+        CHECK(client.publish(etl::string_view("a"), etl::string_view("x"), QoS::AtLeastOnce) ==
+              Error::NotSupported);
+    }
+
+    // max_subscriptions: nothing can be subscribed.
+    {
+        fakes::FakeTransport      transport;
+        fakes::FakeClock          clock;
+        Client<ZeroSubscriptions> client{transport, clock};
+        REQUIRE(connect_client(client, transport));
+
+        CHECK(client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce) ==
+              Error::NoSubscriptionSlot);
+    }
+
+    // max_pending_acks: no SUBSCRIBE or UNSUBSCRIBE can be tracked, so neither
+    // is accepted. This one read the storage and answered Ok.
+    {
+        fakes::FakeTransport    transport;
+        fakes::FakeClock        clock;
+        Client<ZeroPendingAcks> client{transport, clock};
+        REQUIRE(connect_client(client, transport));
+
+        CHECK(client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce) ==
+              Error::NoPendingAckSlot);
+        CHECK(client.unsubscribe(etl::string_view("a/b")) == Error::NoPendingAckSlot);
+    }
+
+    // max_inflight_in: an inbound QoS 2 message cannot be tracked, so it is
+    // counted as an overflow and left unacknowledged for the broker to
+    // retransmit. This one read the storage and tracked a message anyway.
+    {
+        fakes::FakeTransport   transport;
+        fakes::FakeClock       clock;
+        Client<ZeroInflightIn> client{transport, clock};
+        REQUIRE(connect_client(client, transport));
+
+        sim::push_publish(transport, "a/b", "x", QoS::ExactlyOnce, 7);
+        client.step();
+
+        CHECK(client.inbound_overflow_count() == 1u);
+    }
+}

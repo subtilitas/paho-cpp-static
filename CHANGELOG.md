@@ -14,6 +14,42 @@ version rather than a major one. None of those guarantees applied to them.
 refuses a tag that disagrees with it. The entries here are a record, not a
 second declaration that could drift.
 
+## [1.0.0-rc4] — 2026-09-04
+
+A configuration value that did not mean what it said. Found by the same
+external suite, in a round that found nothing in the code rc3 added.
+
+### Fixed
+
+- **`max_pending_acks = 0` and `max_inflight_in = 0` behaved as if set to one.**
+  Every table is rounded up by `detail::at_least_one` so that a zero-sized array
+  is never declared, and these two capacity guards tested the storage rather
+  than the configured limit. So `= 0` neither refused the operation nor
+  reclaimed anything: `subscribe()` returned `Ok` and consumed the rounded-up
+  slot, and an inbound QoS 2 message was tracked with
+  `inbound_overflow_count()` left at zero.
+
+  `max_inflight_out` and `max_subscriptions` already read the configured value.
+  All four now agree: zero means none, and the operation is refused rather than
+  quietly given one slot.
+
+  The storage does not entirely disappear — a zero-length array is ill-formed,
+  so each table still declares one element that nothing is put into. `config.hpp`
+  now says so, and says what zero does for each capacity that accepts it.
+
+  Predates 1.0.0-rc1. Low severity: no memory error and no overflow, and the
+  reading that `0` should mean "none" was an inference from the one documented
+  case rather than a stated contract.
+
+- **`config.hpp` overstated what `max_inflight_out = 0` reclaims.** It said
+  "all of the persisted-message storage", but `at_least_one` rounds the
+  outbound slot array up as well, and that one remaining slot carries a
+  `max_persisted_msg_size` buffer. Zeroing `max_inflight_out` alone takes
+  `sizeof(Client<DefaultConfig>)` from 4552 to 3752 bytes and leaves a 256-byte
+  buffer nothing can reach; zeroing `max_persisted_msg_size` with it reaches
+  3496. The worked sensor profile in `docs/configuration.md` already sets both;
+  the header now says why that matters.
+
 ## [1.0.0-rc3] — 2026-09-03
 
 Three defects in the code rc2 added, found by re-running the same adversarial

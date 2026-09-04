@@ -478,7 +478,7 @@ public:
                 return Error::TopicTooLong;
         }
 
-        if (pending_.full())
+        if (ack_table_full())
             return Error::NoPendingAckSlot;
 
         // Reserve subscription-table space before touching the wire, so a
@@ -556,7 +556,7 @@ public:
             return Error::NotConnected;
         if (filters.empty() || filters.size() > Cfg::max_topics_per_request)
             return Error::InvalidArgument;
-        if (pending_.full())
+        if (ack_table_full())
             return Error::NoPendingAckSlot;
 
         const Result<uint32_t> rl = codec::unsubscribe_remaining_length(filters);
@@ -815,6 +815,24 @@ private:
         uint16_t                                           packet_id = 0;
         PacketType                                         expected  = PacketType::Reserved;
     };
+
+    /// Capacity tests against the *configured* limit, not against the storage.
+    ///
+    /// Every table is rounded up by at_least_one so that a zero-sized array is
+    /// never declared, which means `pending_.full()` and `inbound_ids_.full()`
+    /// answer for one slot when the config asked for none. Comparing against
+    /// Cfg makes 0 mean none, as it already does for max_inflight_out and
+    /// max_subscriptions.
+    ///
+    /// The rounded-up slot is still allocated -- a zero-length array is
+    /// ill-formed, so the storage cannot go away -- but nothing is ever put in
+    /// it.
+    bool ack_table_full() const noexcept { return pending_.size() >= Cfg::max_pending_acks; }
+
+    bool inbound_table_full() const noexcept
+    {
+        return inbound_ids_.size() >= Cfg::max_inflight_in;
+    }
 
     static constexpr size_t packet_size(uint32_t remaining_length) noexcept
     {
@@ -1107,7 +1125,7 @@ private:
                     return Error::Ok;
                 }
 
-                if (inbound_ids_.full())
+                if (inbound_table_full())
                 {
                     // No room to track it, so exactly-once cannot be honoured.
                     // Staying silent is the correct move: the broker still owns
@@ -1393,7 +1411,7 @@ private:
     /// a large table cannot monopolise the transmit queue.
     void pump_resubscribe() noexcept
     {
-        if (pending_.full())
+        if (ack_table_full())
             return;
 
         etl::vector<TopicSubscription, Cfg::max_topics_per_request> batch;
