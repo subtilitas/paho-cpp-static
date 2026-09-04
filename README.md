@@ -288,9 +288,9 @@ allocate, so a `Client` can live in `.bss` on a target with no heap linked.
 <!-- coverage:start -->
 | Metric | Covered | Total | Measured |
 |---|---|---|---|
-| Lines | 1221 | 1293 | 94.4% |
-| Branches | 850 | 961 | 88.4% |
-| Functions | 585 | 766 | 76.4% |
+| Lines | 1224 | 1295 | 94.5% |
+| Branches | 852 | 961 | 88.7% |
+| Functions | 623 | 823 | 75.7% |
 <!-- coverage:end -->
 
 Measured by `gcovr` on every push and published to
@@ -374,6 +374,7 @@ from the suite itself.
 | [docs/porting.md](docs/porting.md) | implementing `Transport` and `Clock`, platform notes, TLS, verifying a port |
 | [docs/configuration.md](docs/configuration.md) | every config knob, sizing guidance, worked profiles |
 | [docs/comparison-with-paho.md](docs/comparison-with-paho.md) | differences from Eclipse Paho MQTT C and the reasoning |
+| [docs/testing.md](docs/testing.md) | what is verified and how — suite, sanitizers, coverage, fuzzing, interop, and what is not tested |
 | [docs/static-analysis.md](docs/static-analysis.md) | what CodeQL, clang-tidy and clang-format report, and which of them gate |
 | [docs/misra.md](docs/misra.md) | MISRA C++:2023 self-assessment — constructs measured, two deviations, what a real claim would need |
 | [docs/compatibility.md](docs/compatibility.md) | what a version number promises: the covered surface, what is excluded, the `Error` numbering rule |

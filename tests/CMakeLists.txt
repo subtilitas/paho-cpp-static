@@ -16,7 +16,8 @@ add_executable(mqtt_tests
     test_encode_bounds.cpp
     test_config_profiles.cpp
     test_step_bounds.cpp
-    test_no_alloc.cpp)
+    test_no_alloc.cpp
+    test_wraparound.cpp)
 
 target_link_libraries(mqtt_tests PRIVATE paho_cpp_static)
 target_include_directories(mqtt_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

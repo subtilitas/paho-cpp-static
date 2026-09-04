@@ -14,11 +14,61 @@ version rather than a major one. None of those guarantees applied to them.
 refuses a tag that disagrees with it. The entries here are a record, not a
 second declaration that could drift.
 
-## [Unreleased]
+## [1.0.0] — 2026-09-04
 
-Documentation only. No functional change.
+The first release under the compatibility promise in
+[docs/compatibility.md](docs/compatibility.md): from here a major version is the
+only thing that may break code using the covered surface correctly.
+
+No functional change from 1.0.0-rc4. The code is what rc4 tagged; what this
+release adds is evidence and documentation.
+
+### Added
+
+- **Wraparound tests for the two counters that wrap.** The packet id is 16 bits
+  and skips 0, so it wraps from 65535 to 1 after 65535 QoS > 0 publishes — about
+  18 hours at one publish per second. The millisecond clock is 32 bits and wraps
+  every 49.7 days. Neither boundary was exercised anywhere in the suite.
+
+  `tests/test_wraparound.cpp` walks the whole 16-bit id space, checks that 0 is
+  never issued, that an id still in flight is not reissued as the allocator
+  wraps past it, and that a QoS 2 handshake taking 65535 completes across the
+  boundary; and it starts every timer at `2^32 - 5000` so keep-alive,
+  retransmission, the connect timeout and `ms_since_last_receive()` each cross
+  2^32 mid-scenario.
+
+  Both behaviours were already correct. The tests are mutation-checked in both
+  directions: wrapping the id to 0 fails 3 cases, and making `elapsed_ms`
+  saturate fails 5 cases and nothing else — every one of the 166 previous cases
+  passes against that mutant.
+
+  The suite is 174 cases and 1246 checks.
+
+- **[docs/testing.md](docs/testing.md)**, stating what is verified and how —
+  suite, sanitizers, platforms, coverage, fuzzing, interoperability, the
+  installed package and static analysis — and what is not: TLS, a broker that
+  misbehaves, execution on hardware, and fuzzing campaigns longer than the 180 s
+  per target per push.
+
+### Fixed
+
+- **`FakeTransport::inbound` only ever grew.** `recv()` advanced a read cursor
+  without reclaiming the vector, so the inbound pipe filled at `kPipeCapacity`
+  after about 1024 acknowledgements and `push_inbound` then silently discarded
+  everything. A test driving many round trips saw publishes start returning
+  `NoInflightSlot`, which reads as a client defect and is not one.
+  `clear_inbound()` resets the vector and the cursor. Test fixture only.
 
 ### Changed
+
+- **`docs/configuration.md` documents what a successful `publish()` means.** It
+  means the packet was accepted, and at QoS > 0 acknowledged; it does not mean
+  the broker stored or forwarded it. Measured against a broker with a 512-byte
+  payload limit, a 513-byte payload is acknowledged and dropped, and nothing
+  reaches the caller. A topic one byte over the broker's limit closes the
+  connection instead, which the caller does see. MQTT 3.1.1 has no error
+  acknowledgement for PUBLISH and no way for a broker to advertise its limits,
+  so size against the broker's documented bounds rather than the client's.
 
 - **`docs/configuration.md` carried the claim rc4 corrected in `config.hpp`.**
   The reference page still said `max_inflight_out = 0` reclaims all

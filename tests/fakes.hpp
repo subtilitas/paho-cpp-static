@@ -121,6 +121,15 @@ public:
     /// Drop everything the client has sent so far.
     void clear_sent() noexcept { sent.clear(); }
 
+    /// Drop everything queued for the client and reset the read cursor. The
+    /// inbound pipe only ever grows as it is consumed, so a test that drives
+    /// many round trips has to reclaim it or it fills at kPipeCapacity.
+    void clear_inbound() noexcept
+    {
+        inbound.clear();
+        inbound_pos_ = 0;
+    }
+
     /// Force the connection up without going through connect().
     void force_connected() noexcept { connected_ = true; }
 
