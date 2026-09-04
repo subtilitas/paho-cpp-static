@@ -53,6 +53,14 @@ struct DefaultConfig
     /// Concurrent outbound QoS 1 / QoS 2 messages awaiting acknowledgement.
     /// This is the MQTT "inflight window". Set to 0 to forbid QoS > 0
     /// publishing entirely and reclaim all of the persisted-message storage.
+    ///
+    /// Zero means none for every capacity that accepts it -- the operation is
+    /// refused rather than quietly given one slot. The storage does not quite
+    /// disappear: a zero-length array is ill-formed, so each table still
+    /// declares one element that nothing is ever put into. max_inflight_out is
+    /// the exception worth having, because its slots carry
+    /// max_persisted_msg_size bytes each and dropping them reclaims real
+    /// space.
     static constexpr size_t max_inflight_out = 4;
 
     /// Bytes reserved per outbound slot to hold the serialized PUBLISH so it
@@ -61,14 +69,20 @@ struct DefaultConfig
     static constexpr size_t max_persisted_msg_size = 256;
 
     /// Packet ids of inbound QoS 2 messages received but not yet released.
-    /// Used for duplicate suppression between PUBREC and PUBCOMP.
+    /// Used for duplicate suppression between PUBREC and PUBCOMP. Set to 0 to
+    /// track none, which makes every inbound QoS 2 message an overflow: it is
+    /// counted by inbound_overflow_count() and left for the broker to
+    /// retransmit rather than being acknowledged.
     static constexpr size_t max_inflight_in = 4;
 
     /// Active subscriptions retained for redelivery on reconnect and for
-    /// per-subscription callback dispatch.
+    /// per-subscription callback dispatch. Set to 0 to refuse every
+    /// subscribe() with Error::NoSubscriptionSlot.
     static constexpr size_t max_subscriptions = 8;
 
-    /// SUBSCRIBE / UNSUBSCRIBE requests awaiting their ack.
+    /// SUBSCRIBE / UNSUBSCRIBE requests awaiting their ack. Set to 0 to refuse
+    /// both with Error::NoPendingAckSlot -- a client that only publishes needs
+    /// neither.
     static constexpr size_t max_pending_acks = 4;
 
     /// Topic filters permitted in a single SUBSCRIBE/UNSUBSCRIBE packet.

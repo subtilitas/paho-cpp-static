@@ -288,9 +288,9 @@ allocate, so a `Client` can live in `.bss` on a target with no heap linked.
 <!-- coverage:start -->
 | Metric | Covered | Total | Measured |
 |---|---|---|---|
-| Lines | 1218 | 1290 | 94.4% |
+| Lines | 1221 | 1293 | 94.4% |
 | Branches | 850 | 961 | 88.4% |
-| Functions | 505 | 606 | 83.3% |
+| Functions | 585 | 766 | 76.4% |
 <!-- coverage:end -->
 
 Measured by `gcovr` on every push and published to
