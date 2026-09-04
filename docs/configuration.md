@@ -28,8 +28,16 @@ Anything not overridden keeps its default. `ConfigCheck<Cfg>`, instantiated by
 ### Capacities set to zero
 
 `max_inflight_out`, `max_inflight_in`, `max_subscriptions` and
-`max_pending_acks` accept `0`, and zero means none: the operation is refused
-rather than quietly given one slot.
+`max_pending_acks` accept `0`, and zero means none rather than the one slot the
+storage still holds.
+
+For the three that bound a call the application makes, that means the call is
+refused: `Error::NotSupported` from `publish()` above QoS 0,
+`Error::NoSubscriptionSlot` from `subscribe()`, `Error::NoPendingAckSlot` from
+`subscribe()` and `unsubscribe()`. `max_inflight_in` bounds what the *broker*
+sends, and MQTT 3.1.1 has no way to refuse an inbound QoS. At zero the client
+declines to track the packet id, which means it never acknowledges the message
+and the broker retransmits it — see `max_inflight_in` below.
 
 The storage does not go away entirely. A zero-length array is ill-formed, so
 each table still declares one element that nothing is ever put into. That
