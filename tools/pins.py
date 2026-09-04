@@ -106,6 +106,17 @@ def check(pins: Pins) -> list[str]:
                     f"CMakeLists says {pins.etl_tag}"
                 )
 
+        # The ETL version matrix says which versions the library is known to
+        # build against. It has to include the pinned one, or the range is
+        # asserted about versions the project does not itself use.
+        if "etl-range:" in text:
+            versions = re.findall(r'^\s*-\s*"(\d+\.\d+\.\d+)"', text, re.MULTILINE)
+            if pins.etl_tag not in versions:
+                problems.append(
+                    f"{rel}: the etl-range matrix does not include the pinned "
+                    f"ETL {pins.etl_tag}\n      matrix: {', '.join(versions)}"
+                )
+
     return problems
 
 

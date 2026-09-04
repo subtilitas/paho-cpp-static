@@ -531,3 +531,76 @@ jobs:
           name: fuzz-findings
           path: findings/
           if-no-files-found: ignore
+
+  # The library is pinned to one ETL commit, but a consumer who already depends
+  # on ETL builds against whatever they have. This job says which versions that
+  # is actually true for, rather than leaving it to a consumer to discover.
+  #
+  # The floor is 20.40.1 because of the footprint, not the API: 20.39.0 and
+  # 20.40.0 compile and pass, but etl::vector carried 8 more bytes per instance
+  # before 20.40.1, which makes sizeof(Client<Cfg>) 56 bytes larger and every
+  # figure in docs/configuration.md wrong. Both are kept in the matrix and
+  # allowed to differ, so the boundary stays measured rather than remembered.
+  #
+  # There is no upper bound to test against: ETL has published no 21.x.
+  etl-range:
+    name: ETL ${{ matrix.etl }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        etl:
+          - "20.39.0"   # below the footprint floor; API-compatible
+          - "20.40.0"   # below the footprint floor; API-compatible
+          - "20.40.1"   # the floor: first version with the current footprint
+          - "20.41.0"
+          - "20.43.0"
+          - "20.44.0"
+          - "20.46.0"
+          - "20.48.1"   # the pinned version
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out ETL ${{ matrix.etl }}
+        uses: actions/checkout@v7
+        with:
+          repository: ETLCPP/etl
+          ref: ${{ matrix.etl }}
+          path: etl-src
+
+      # MQTT_ETL_DIR is the consumer-supplied path, so this exercises the same
+      # code path an integrator with their own ETL takes.
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DMQTT_ETL_DIR="${GITHUB_WORKSPACE}/etl-src" \
+            -DMQTT_WERROR=ON \
+            -DMQTT_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # mqtt_tests is run directly rather than through ctest so its output can
+      # be kept for the footprint step below, which would otherwise mean running
+      # the whole 174-case suite a second time per ETL version. pipefail is what
+      # makes the runner's exit code survive the pipe into tee. The remaining
+      # ctest cases are the compile-failure ones, which have to go through ctest
+      # because the build is the test.
+      - name: Test
+        run: |
+          set -euo pipefail
+          ./build/tests/mqtt_tests 2>&1 | tee mqtt-tests.log
+          ctest --test-dir build --output-on-failure -E '^mqtt_tests$'
+
+      # Recorded rather than asserted. sizeof is excluded from the compatibility
+      # promise, so a change here is news and not a failure -- but it is the
+      # number an integrator sizes a build against, so it belongs in the log
+      # next to the version that produced it.
+      - name: Record the footprint
+        run: |
+          set -euo pipefail
+          {
+            echo "### ETL ${{ matrix.etl }}"
+            grep 'sizeof(Client' mqtt-tests.log
+          } | tee -a "$GITHUB_STEP_SUMMARY"
