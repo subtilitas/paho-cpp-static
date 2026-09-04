@@ -162,6 +162,37 @@ closed, and the session ended with `Error::Ok`. minimosq's observer additionally
 reports protocol violations, refusals, failed sends and dropped deliveries, and
 the job fails on any of them.
 
+## The ETL version range
+
+The library pins one ETL commit, but a consumer who already depends on ETL
+builds against whatever they have. CI builds and runs the full suite against
+eight ETL releases on every push, so the supported range is measured rather
+than assumed:
+
+20.39.0, 20.40.0, 20.40.1, 20.41.0, 20.43.0, 20.44.0, 20.46.0 and the pinned
+20.48.1. `tools/pins.py --check` fails if that matrix stops including the
+pinned version.
+
+All eight compile under `-Werror` and pass all 174 cases, so the API floor is at
+or below 20.39.0. The **footprint** floor is higher: `etl::vector` carried 8
+more bytes per instance before 20.40.1, which makes `sizeof(Client<Cfg>)` 56
+bytes larger on 20.39.0 and 20.40.0 — 4608 rather than 4552 at the defaults.
+
+| ETL | `Client<Small>` | `Client<Default>` | `Client<Large>` |
+|---|---|---|---|
+| 20.39.0 – 20.40.0 | 1312 | 4608 | 21136 |
+| 20.40.1 – 20.48.1 | 1256 | 4552 | 21080 |
+
+Every byte count in [configuration.md](configuration.md) and on the Memory
+footprint page is measured at the pinned version and holds from 20.40.1 up.
+Below that the library works and the published numbers do not. `sizeof` is
+excluded from the compatibility promise for exactly this reason — see
+[compatibility.md](compatibility.md) — so the matrix records the footprint per
+version rather than asserting one.
+
+There is no tested upper bound. ETL has published no 21.x release, so any range
+ending there would be a claim about code that does not exist.
+
 ## The installed package
 
 A separate job installs the library and builds `tests/consumer/` out of tree
