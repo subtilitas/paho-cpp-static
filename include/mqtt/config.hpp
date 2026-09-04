@@ -77,6 +77,15 @@ struct DefaultConfig
     /// track none, which makes every inbound QoS 2 message an overflow: it is
     /// counted by inbound_overflow_count() and left for the broker to
     /// retransmit rather than being acknowledged.
+    ///
+    /// Zero is worth setting only on a client that never subscribes above
+    /// QoS 1, because it saves no memory: the one-element residue plus struct
+    /// padding absorbs the difference, and sizeof(Client<Cfg>) is unchanged
+    /// against the default of 4. What it does change is that inbound QoS 2
+    /// becomes permanently undeliverable instead of transiently blocked, and
+    /// silently so -- no call was made, so there is no error to return, and
+    /// MQTT 3.1.1 has no way to refuse the QoS to the peer.
+    /// inbound_overflow_count() is the only evidence.
     static constexpr size_t max_inflight_in = 4;
 
     /// Active subscriptions retained for redelivery on reconnect and for

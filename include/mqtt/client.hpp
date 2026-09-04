@@ -600,6 +600,14 @@ public:
     /// Advance the client. Call this regularly -- at least several times per
     /// keep-alive interval. Never blocks.
     ///
+    /// The keep-alive is not a watchdog on the caller's loop. pump_rx()
+    /// processes the PINGRESP before pump_keep_alive() looks at the clock, so a
+    /// loop starved to one step() every 600 s against a 10 s keep-alive holds
+    /// its session indefinitely as long as the broker answers. A starved loop
+    /// is caught by the broker's 1.5x grace window, not here. Anything that
+    /// must notice a late loop needs its own timer; ms_since_last_receive() is
+    /// the value to hang one on.
+    ///
     /// Returns Error::Ok when everything is fine (including when there was
     /// simply nothing to do). Any other value means the session has just ended
     /// and the same value was passed to the on_disconnect handler -- with one
@@ -744,8 +752,10 @@ public:
     }
 
     /// Count of inbound QoS 2 messages dropped because the tracking table was
-    /// full. A non-zero value means max_inflight_in is undersized for the
-    /// broker's delivery rate.
+    /// full. At a non-zero max_inflight_in a rising value means the table is
+    /// undersized for the broker's delivery rate. At max_inflight_in == 0 the
+    /// table is never anything but full, so this rises once per inbound QoS 2
+    /// message and is the only signal that they are being discarded.
     uint32_t inbound_overflow_count() const noexcept { return inbound_overflow_count_; }
 
     /// Count of acknowledgements deferred because the transmit queue was full.
@@ -1356,6 +1366,12 @@ private:
 
         const uint32_t now = clock_.now_ms();
 
+        // This ordering is load-bearing, not incidental. The only branch that
+        // ends the session is guarded by ping_outstanding_, so a clock that
+        // jumps backwards is read as an elapsed time near 2^32 by the send
+        // threshold below and produces one early PINGREQ, not a disconnect.
+        // Hoisting the timeout check above this guard, or reaching it with no
+        // ping in flight, turns a clock correction into a dropped session.
         if (ping_outstanding_)
         {
             // The broker owes us a PINGRESP within one keep-alive period.

@@ -14,6 +14,41 @@ version rather than a major one. None of those guarantees applied to them.
 refuses a tag that disagrees with it. The entries here are a record, not a
 second declaration that could drift.
 
+## [Unreleased]
+
+Documentation only. No functional change.
+
+### Changed
+
+- **`docs/configuration.md` carried the claim rc4 corrected in `config.hpp`.**
+  The reference page still said `max_inflight_out = 0` reclaims all
+  persisted-message storage, while the header it points readers at said the
+  opposite. The page now states the zero semantics for all four capacities that
+  accept zero, with the measured footprint of each: 4552 bytes at the defaults,
+  3752 with `max_inflight_out = 0`, 3496 with `max_persisted_msg_size = 0`
+  alongside it, 3656 with `max_subscriptions = 0`, 4432 with
+  `max_pending_acks = 0`, and 4552 — unchanged — with `max_inflight_in = 0`.
+
+- **`inbound_overflow_count()` was documented as an undersizing signal only.**
+  At `max_inflight_in = 0` a rising count is the configured steady state rather
+  than a sizing fault, so the accessor in `client.hpp` and the page now
+  distinguish the two readings. `config.hpp` records that `max_inflight_in = 0`
+  saves no memory and makes inbound QoS 2 permanently undeliverable with no
+  signal to either end beyond that counter.
+
+- **`step()` does not document that the keep-alive is not a watchdog on the
+  caller's loop.** A loop starved to one `step()` per 600 s against a 10 s
+  keep-alive holds its session for as long as the broker answers, because
+  `pump_rx()` processes the PINGRESP before `pump_keep_alive()` reads the clock.
+  A starved loop is caught by the broker's 1.5x grace window. `step()` now says
+  so and names `ms_since_last_receive()` as the value to build a real watchdog
+  on.
+
+- **`pump_keep_alive()`'s branch order is load-bearing and unremarked.** Only
+  the `ping_outstanding_` branch ends the session, so a clock that jumps
+  backwards produces one early PINGREQ rather than a disconnect. A comment now
+  records the constraint.
+
 ## [1.0.0-rc4] — 2026-09-04
 
 A configuration value that did not mean what it said. Found by the same
