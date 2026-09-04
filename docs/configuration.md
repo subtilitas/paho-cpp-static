@@ -149,10 +149,11 @@ broker acknowledged it. It does not mean the broker stored or forwarded it.
 A broker with a smaller payload or topic bound than the client's may acknowledge
 a PUBLISH and drop it. Measured against a broker whose payload limit is 512
 bytes: a 513-byte payload is acknowledged, the connection survives, and the
-message is silently discarded — `publish()` returned `Ok`, the QoS 1 handshake
-completed, and nothing further reaches the caller. A topic one byte over the
+message is silently discarded — `publish()` returned `Error::Ok`, the QoS 1
+handshake completed, and nothing further reaches the caller. A topic one byte over the
 broker's limit is treated as a protocol violation instead and closes the
-connection, which the caller does see, as `on_disconnect(TransportClosed)`.
+connection, which the caller does see, as
+`on_disconnect(Error::TransportClosed)`.
 
 MQTT 3.1.1 has no error acknowledgement for PUBLISH and no way for a broker to
 advertise its limits, so there is nothing this library can return instead. Size
