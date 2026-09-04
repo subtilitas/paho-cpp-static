@@ -54,10 +54,14 @@ struct DefaultConfig
     /// This is the MQTT "inflight window". Set to 0 to forbid QoS > 0
     /// publishing entirely.
     ///
-    /// Zero means none for every capacity that accepts it: the operation is
-    /// refused rather than quietly given one slot. The storage does not quite
-    /// go away, though. A zero-length array is ill-formed, so every table
-    /// still declares one element that nothing is ever put into.
+    /// Zero means none for every capacity that accepts it, rather than the one
+    /// slot the storage still holds. For the three that bound a call the
+    /// application makes -- this one, max_subscriptions and max_pending_acks --
+    /// that call is refused. max_inflight_in bounds what the broker sends, so
+    /// there is no call to refuse; see the note there.
+    ///
+    /// The storage does not quite go away. A zero-length array is ill-formed,
+    /// so every table still declares one element that nothing is ever put into.
     ///
     /// That residue only costs anything here, because an outbound slot carries
     /// a max_persisted_msg_size buffer -- so setting max_inflight_out to 0 on
@@ -77,6 +81,15 @@ struct DefaultConfig
     /// track none, which makes every inbound QoS 2 message an overflow: it is
     /// counted by inbound_overflow_count() and left for the broker to
     /// retransmit rather than being acknowledged.
+    ///
+    /// Zero is worth setting only on a client that never subscribes above
+    /// QoS 1, because it saves no memory: the one-element residue plus struct
+    /// padding absorbs the difference, and sizeof(Client<Cfg>) is unchanged
+    /// against the default of 4. What it does change is that inbound QoS 2
+    /// becomes permanently undeliverable instead of transiently blocked, and
+    /// silently so -- no call was made, so there is no error to return, and
+    /// MQTT 3.1.1 has no way to refuse the QoS to the peer.
+    /// inbound_overflow_count() is the only evidence.
     static constexpr size_t max_inflight_in = 4;
 
     /// Active subscriptions retained for redelivery on reconnect and for

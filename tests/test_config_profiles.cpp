@@ -75,8 +75,9 @@ TEST(config_with_no_inflight_window_refuses_qos_above_zero)
     Rig<TinyConfig> r;
     REQUIRE(r.bring_up());
 
-    // Documented in config.hpp: max_inflight_out = 0 forbids QoS > 0 entirely
-    // and reclaims all of the persisted-message storage.
+    // Documented in config.hpp: max_inflight_out = 0 forbids QoS > 0 entirely.
+    // This profile also sets max_persisted_msg_size = 0, which is what reclaims
+    // the buffer on the slot the zero-length-array residue leaves behind.
     CHECK(r.client.publish(etl::string_view("t"), etl::string_view("x"), QoS::AtLeastOnce) ==
           Error::NotSupported);
     CHECK(r.client.publish(etl::string_view("t"), etl::string_view("x"), QoS::ExactlyOnce) ==

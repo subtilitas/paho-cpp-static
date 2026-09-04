@@ -25,6 +25,37 @@ Anything not overridden keeps its default. `ConfigCheck<Cfg>`, instantiated by
 
 ## The knobs
 
+### Capacities set to zero
+
+`max_inflight_out`, `max_inflight_in`, `max_subscriptions` and
+`max_pending_acks` accept `0`, and zero means none rather than the one slot the
+storage still holds.
+
+For the three that bound a call the application makes, that means the call is
+refused: `Error::NotSupported` from `publish()` above QoS 0,
+`Error::NoSubscriptionSlot` from `subscribe()`, `Error::NoPendingAckSlot` from
+`subscribe()` and `unsubscribe()`. `max_inflight_in` bounds what the *broker*
+sends, and MQTT 3.1.1 has no way to refuse an inbound QoS. At zero the client
+declines to track the packet id, which means it never acknowledges the message
+and the broker retransmits it — see `max_inflight_in` below.
+
+The storage does not go away entirely. A zero-length array is ill-formed, so
+each table still declares one element that nothing is ever put into. That
+residue is 2 bytes for `max_inflight_in`, `max_topic_len + 64` bytes for
+`max_subscriptions`, and one outbound slot including its
+`max_persisted_msg_size` buffer for `max_inflight_out`. Set
+`max_persisted_msg_size` to `0` alongside `max_inflight_out = 0` to shrink that
+buffer to a single byte.
+
+Measured on x86-64 with GCC at `-Os`, against `sizeof(Client<DefaultConfig>)`
+of 4552 bytes and changing one thing at a time:
+
+- `max_inflight_out = 0` — 3752 bytes, saving 800.
+- `max_inflight_out = 0` and `max_persisted_msg_size = 0` — 3496 bytes, saving 1056.
+- `max_subscriptions = 0` — 3656 bytes, saving 896.
+- `max_pending_acks = 0` — 4432 bytes, saving 120.
+- `max_inflight_in = 0` — 4552 bytes, saving nothing.
+
 ### `rx_buffer_size` — default 1024
 
 Must hold the largest inbound packet **whole**, including its fixed header.
@@ -74,8 +105,11 @@ instead of a rejection from the broker a round trip later.
 The outbound QoS > 0 window: how many QoS 1 or QoS 2 publishes may be in flight
 at once. `publish()` returns `Error::NoInflightSlot` when it is full.
 
-Set it to `0` to forbid QoS > 0 publishing and reclaim all persisted-message
-storage. A telemetry-only node publishing at QoS 0 saves real memory this way.
+Set it to `0` to forbid QoS > 0 publishing: `publish()` above QoS 0 returns
+`Error::NotSupported`. That alone saves 800 bytes and leaves one
+`max_persisted_msg_size` buffer nothing can reach; set `max_persisted_msg_size`
+to `0` alongside it to recover a further 256. See "Capacities set to zero"
+above. The constrained sensor profile below sets both.
 
 Sizing: round-trip time to the broker divided by publish interval, plus
 headroom. A sensor publishing every 5 s to a broker 200 ms away needs 1. A
@@ -115,8 +149,18 @@ for duplicate suppression, at 2 bytes each.
 If it fills, an incoming QoS 2 message is neither delivered nor acknowledged,
 leaving it with the broker to retransmit, and `inbound_overflow_count()`
 increments. The connection is deliberately *not* dropped: doing so would hand a
-peer a trivial way to knock the device offline. A non-zero count means this is
-undersized for the broker's delivery rate.
+peer a trivial way to knock the device offline. At a non-zero capacity, a
+rising count means this is undersized for the broker's delivery rate.
+
+Set it to `0` only on a client that never subscribes above QoS 1. Zero saves no
+memory at all — the one-element residue plus struct padding absorbs the
+difference, and `sizeof(Client<Cfg>)` is unchanged — and it makes inbound QoS 2
+permanently undeliverable rather than transiently blocked. Every QoS 2 PUBLISH
+takes the overflow branch, so the message is never delivered, the broker
+retransmits it for as long as the session lasts, and its packet id occupies the
+broker's inflight window. Nothing reports this. The caller gets no error because
+no call was made, and MQTT 3.1.1 has no way to refuse a QoS the peer is entitled
+to use. A steadily rising `inbound_overflow_count()` is the only evidence.
 
 ### `max_subscriptions` — default 8
 
@@ -136,11 +180,18 @@ delegate, ids and flags. At the defaults, 8 × 128 = 1024 bytes.
 Wildcards keep this small: one subscription to `sensors/+/cmd` beats thirty
 individual filters, and the client's matcher routes them to the right handler.
 
+Set it to `0` on a publish-only client to refuse every `subscribe()` with
+`Error::NoSubscriptionSlot`, saving 896 bytes at the default `max_topic_len`.
+
 ### `max_pending_acks` — default 4
 
 SUBSCRIBE and UNSUBSCRIBE requests awaiting their ack. Rarely needs to exceed 2
 unless many filters are subscribed in a burst at startup. Both calls return
 `Error::NoPendingAckSlot` when full; retry on the next loop iteration.
+
+Set it to `0` to refuse both calls outright, saving 120 bytes. A client that
+only publishes needs neither, and pairing this with `max_subscriptions = 0`
+saves 1016 bytes together.
 
 ### `max_topics_per_request` — default 4
 
