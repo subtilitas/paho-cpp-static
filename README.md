@@ -28,8 +28,8 @@ run time.
   overruns as `bool` / `etl::optional` rather than throwing.
 
 About 2 200 lines of library and 1 KiB of RAM at the small end. Flash, RAM and
-stack are measured on every push, on the host and cross-compiled for Cortex-M0+
-and Cortex-M4 — see
+stack are measured on every pull request and merge, both on the host and
+cross-compiled for Cortex-M0+ and Cortex-M4 — see
 [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint)
 and the [Cross-compile](https://github.com/subtilitas/paho-cpp-static/actions/workflows/cross.yml)
 job summaries.
@@ -172,10 +172,10 @@ and nothing else.
 
 | Platform | Library and tests | Examples |
 |---|---|---|
-| Linux, GCC and Clang | built and tested on every push | all three demos |
-| macOS, Clang | built and tested on every push | all three demos |
-| Windows, MSVC | built and tested on every push | `ip_publisher`, over `winsock_transport.hpp` |
-| Cortex-M0+ and Cortex-M4, `arm-none-eabi` | built, with flash, RAM and stack measured on every push | none — no sockets to build against |
+| Linux, GCC and Clang | built and tested on every pull request and merge | all three demos |
+| macOS, Clang | built and tested on every pull request and merge | all three demos |
+| Windows, MSVC | built and tested on every pull request and merge | `ip_publisher`, over `winsock_transport.hpp` |
+| Cortex-M0+ and Cortex-M4, `arm-none-eabi` | built, with flash, RAM and stack measured on every pull request and merge | none — no sockets to build against |
 
 `ip_publisher` selects the Winsock pair on Windows and the POSIX pair
 elsewhere, and is otherwise the same program. The other two demos use
@@ -197,7 +197,7 @@ bytes) for a `Client<Cfg>` instantiation touching every public entry point —
 less in a real application, since the linker drops what you never call.
 
 These are x86-64 GCC at `-Os`, indicative rather than a promise for Cortex-M.
-Exact figures are remeasured on every push and published to
+Exact figures are remeasured on every pull request and merge, and published to
 [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint),
 which takes precedence if the two ever disagree.
 
@@ -248,7 +248,7 @@ A dependency-free harness rather than GoogleTest, which reports failures by
 throwing and would undercut the `-fno-exceptions` guarantee. Every case name and
 the live count are on the generated
 [Test inventory](https://github.com/subtilitas/paho-cpp-static/wiki/Test-Inventory)
-page, rebuilt from the suite on every push.
+page, rebuilt from the suite whenever the sources it derives from change.
 
 | File | Covers |
 |---|---|
@@ -293,7 +293,7 @@ allocate, so a `Client` can live in `.bss` on a target with no heap linked.
 | Functions | 623 | 823 | 75.7% |
 <!-- coverage:end -->
 
-Measured by `gcovr` on every push and published to
+Measured by `gcovr` on every pull request and merge, and published to
 [Codecov](https://codecov.io/gh/subtilitas/paho-cpp-static). The table is
 written by `tools/coverage.py`; CI re-measures and runs `--check`, failing the
 build when these figures drift from what the suite does. Scope is
@@ -341,13 +341,14 @@ Also verified:
 - Clean under `-fsanitize=address,undefined`.
 - Clean under `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion
   -Wold-style-cast -Wcast-align`.
-- clang-tidy and clang-format gate on every push; CodeQL runs on every push and
-  reports to the Security tab. See
+- clang-tidy and clang-format gate on every pull request and merge; CodeQL runs
+  on the same trigger plus weekly, and reports to the Security tab. See
   [docs/static-analysis.md](docs/static-analysis.md).
 - `nm` on the library and on a full `Client` instantiation shows no reference to
   `malloc`, `operator new`, `__cxa_throw`, `_Unwind_*` or any typeinfo symbol.
 - Interoperates with two independent brokers at QoS 0/1/2 in both directions,
-  on every push. **Mosquitto**, with the broker's own trace confirming complete
+  on every pull request and merge. **Mosquitto**, with the broker's own trace
+  confirming complete
   PUBLISH/PUBREC/PUBREL/PUBCOMP handshakes and keep-alive pings and no protocol
   errors logged. **[minimosq](https://github.com/subtilitas/minimosq-mqtt)**,
   which reports protocol violations, refusals, failed sends and dropped
@@ -358,7 +359,8 @@ Also verified:
 ## Documentation
 
 The [wiki](https://github.com/subtilitas/paho-cpp-static/wiki) renders
-everything below, rebuilt by CI on every push. Three of its pages are generated
+everything below, rebuilt by CI whenever the sources it derives from change.
+Three of its pages are generated
 from the source rather than written by hand, so they cannot drift:
 [API reference](https://github.com/subtilitas/paho-cpp-static/wiki/API-Reference)
 from the header comments,

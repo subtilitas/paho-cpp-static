@@ -55,7 +55,8 @@ needs the standard in hand.
 
 `tools/scan_constructs.py` strips comments and string literals, then counts each
 construct against a budget. It runs in CI (`sca.yml`), so this table is
-re-derived on every push rather than being a snapshot somebody took once.
+re-derived on every pull request and merge rather than being a snapshot
+somebody took once.
 
 ```bash
 tools/scan_constructs.py            # report
@@ -163,7 +164,7 @@ The nearest available proxies all pass and all gate in CI:
   substantially with the AUTOSAR C++14 lineage that fed MISRA C++:2023. 21
   checks are disabled, each with its reasoning recorded in `.clang-tidy` and
   `docs/static-analysis.md`.
-- **CodeQL** `security-and-quality`, weekly and on every push.
+- **CodeQL** `security-and-quality`, weekly and on every pull request and merge.
 - **ASan and UBSan** clean across the suite.
 - **`-Werror`** with the warning set above.
 - **No undefined `malloc`, `operator new`, `__cxa_throw` or unwinder symbols**

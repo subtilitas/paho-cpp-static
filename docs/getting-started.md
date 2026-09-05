@@ -65,7 +65,7 @@ python3 tools/stub_broker.py --session-present # exercise session resumption
 
 It is permissive, so it will not catch a client sending something the spec
 forbids. Check against real Mosquitto before believing a port works, as this
-project's CI does on every push.
+project's CI does on every pull request and merge.
 
 ## The three examples
 
