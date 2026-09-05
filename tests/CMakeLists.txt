@@ -36,11 +36,13 @@ endif()
 
 add_test(NAME mqtt_tests COMMAND mqtt_tests)
 
-# One ctest test for the whole binary. The label is for selection and for the
-# timing summary ctest prints per label -- not for excluding anything: the
-# zero-allocation cases are inside this binary and cannot be filtered out by
-# name from here. They run under the sanitizers with everything else, which is
-# what a replaced global operator new supports.
+# One ctest test for the whole binary. The label selects it -- `ctest -L unit`,
+# or `-LE unit` to leave it out -- and names it in ctest's per-label timing
+# summary. What it cannot do is reach inside: the zero-allocation cases are
+# TEST() cases within this binary rather than ctest tests, so no label or -E
+# pattern can exclude them while keeping the rest. They run under the
+# sanitizers with everything else, which is what a replaced global operator new
+# supports.
 set_tests_properties(mqtt_tests PROPERTIES LABELS "unit")
 
 #-------------------------------------------------------------------------------
