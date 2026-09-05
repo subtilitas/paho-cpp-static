@@ -222,6 +222,29 @@ if(NOT MSVC)
     if(MQTT_STACK_USAGE)
         target_compile_options(paho_cpp_static PRIVATE -fstack-usage)
     endif()
+
+    # The library has to carry the fuzzer's instrumentation too, not just the
+    # harness.
+    #
+    # libFuzzer is a coverage-guided fuzzer: it decides what to mutate next from
+    # the edges a run reaches. Those edges come from SanitizerCoverage, which is
+    # compile-time. Building only tests/fuzz/*.cpp with -fsanitize=fuzzer leaves
+    # the library uninstrumented, so the fuzzer sees the harness's own branches
+    # and nothing of what it is fuzzing -- it reports a coverage figure that
+    # never moves and mutates blindly for as long as it is given.
+    #
+    # fuzzer-no-link, because the executables link the fuzzer runtime and its
+    # main(); the library only needs the instrumentation. address,undefined for
+    # the same reason they are on the executables: a stack or global overflow
+    # inside src/ needs the library compiled with them, not merely linked
+    # against them.
+    if(MQTT_FUZZ)
+        target_compile_options(paho_cpp_static PUBLIC
+            -fsanitize=fuzzer-no-link,address,undefined
+            -fno-omit-frame-pointer -g)
+        target_link_options(paho_cpp_static PUBLIC
+            -fsanitize=address,undefined)
+    endif()
 else()
     # /EHsc was already stripped from CMAKE_CXX_FLAGS above; this stops the
     # MSVC standard library from introducing throw sites of its own.

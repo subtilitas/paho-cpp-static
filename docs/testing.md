@@ -162,6 +162,17 @@ Two libFuzzer targets, clang only:
 - `fuzz_client` — a full session driven by fuzzer-chosen transport behaviour.
   Corpus: 166 inputs.
 
+The library is compiled with the fuzzer's instrumentation too, not only the
+harness. libFuzzer is coverage-guided: it chooses what to mutate from the edges
+a run reaches, and those edges come from compile-time SanitizerCoverage.
+Instrumenting only `tests/fuzz/*.cpp` leaves the fuzzer seeing its own branches
+and nothing of what it is fuzzing — it reports a coverage figure that never
+moves and mutates blindly. Measured on the same corpus and time budget,
+`fuzz_codec` reaches 39 edges without the library instrumented and 567 with it;
+`fuzz_client` 1454 and 2123. The gap is smaller for `fuzz_client` because much
+of the client is header-only templates, which are compiled into the harness
+translation unit and were instrumented either way.
+
 CI runs both twice. The **gate** replays the checked-in corpus, which is
 deterministic because `-runs` is a count rather than a clock, so it either
 passes or names an input. The **search** runs 180 s per target at
