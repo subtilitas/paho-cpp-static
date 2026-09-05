@@ -606,10 +606,20 @@ jobs:
       # promise, so a change here is news and not a failure -- but it is the
       # number an integrator sizes a build against, so it belongs in the log
       # next to the version that produced it.
+      # The heading names both identities on purpose. ETL's 20.40.1 tag ships an
+      # etl/version.h declaring 20.41.1 -- the only tag in this matrix where the
+      # two disagree, and it is the footprint boundary row. Labelling that leg
+      # by tag alone gives one row two identities and no way to tell which is
+      # meant when reconciling against ETL's own headers. Everything else here,
+      # including the floor, is stated by tag.
       - name: Record the footprint
         run: |
           set -euo pipefail
+          hdr=$(awk '/#define ETL_VERSION_MAJOR/{a=$3}
+                     /#define ETL_VERSION_MINOR/{b=$3}
+                     /#define ETL_VERSION_PATCH/{c=$3}
+                     END{print a"."b"."c}' etl-src/include/etl/version.h)
           {
-            echo "### ETL ${{ matrix.etl }}"
+            echo "### ETL tag ${{ matrix.etl }} — etl/version.h reports $hdr"
             grep 'sizeof(Client' mqtt-tests.log
           } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -179,9 +179,8 @@ the job fails on any of them.
 
 The library pins one ETL commit, but a consumer who already depends on ETL
 builds against whatever they have. CI builds and runs the full suite against
-eight ETL releases on every pull request and merge, so the supported range is
-measured rather
-than assumed:
+nine ETL releases on every pull request and merge, so the supported range is
+measured rather than assumed:
 
 20.39.0, 20.39.4, 20.40.0, 20.40.1, 20.41.0, 20.43.0, 20.44.0, 20.46.0 and the
 pinned 20.48.1. `tools/pins.py --check` fails if that matrix stops including the
@@ -198,7 +197,7 @@ that a known configuration rather than something discovered from a linker map.
 A consumer composing this library with another ETL-based one should check which
 version actually won.
 
-All eight compile under `-Werror` and pass all 174 cases, so the API floor is at
+All nine compile under `-Werror` and pass all 174 cases, so the API floor is at
 or below 20.39.0. The **footprint** floor is higher: `etl::vector` carried 8
 more bytes per instance before 20.40.1, which makes `sizeof(Client<Cfg>)` 56
 bytes larger on 20.39.0 and 20.40.0 — 4608 rather than 4552 at the defaults.
@@ -209,6 +208,12 @@ bytes larger on 20.39.0 and 20.40.0 — 4608 rather than 4552 at the defaults.
 | 20.40.1 – 20.48.1 | 1256 | 4552 | 21080 |
 
 That covers 20.39.4, which sits in the first row.
+
+The boundary is stated by **tag**. ETL's 20.40.1 tag ships an `etl/version.h`
+declaring 20.41.1 — the only tag in this matrix where the two disagree, and it
+is the boundary row. So "the floor is 20.40.1" means the tag; a build that
+reports ETL 20.41.1 from the header may be that same tag. The CI summary heads
+each row with both identities for this reason.
 
 Every byte count in [configuration.md](configuration.md) and on the Memory
 footprint page is measured at the pinned version and holds from 20.40.1 up.
