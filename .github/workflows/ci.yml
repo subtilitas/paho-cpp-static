@@ -504,8 +504,25 @@ jobs:
       # The gate. Replaying the checked-in corpus is deterministic -- -runs is
       # a count, not a clock -- so this either passes or names an input, and it
       # does not depend on how loaded the runner is.
+      #
+      # The count assertion first. A ctest filter that matches no test name is
+      # not an error: ctest runs everything and says nothing, so the job passes
+      # while doing something other than what it says. That is not theoretical
+      # -- `-E no_alloc` sat in the sanitizer job for months selecting all four
+      # tests. Requiring the filtered count to be both non-zero and smaller than
+      # the unfiltered one catches an inert filter and an over-broad one. It
+      # does not check that the filter excludes the *right* tests, only that it
+      # excludes.
       - name: Replay the corpus
-        run: ctest --test-dir build -L fuzz --output-on-failure
+        run: |
+          set -euo pipefail
+          all=$(ctest --test-dir build -N | grep -c "Test #" || true)
+          sel=$(ctest --test-dir build -N -L fuzz | grep -c "Test #" || true)
+          if [ "$sel" -eq 0 ] || [ "$sel" -ge "$all" ]; then
+            echo "::error::-L fuzz selects $sel of $all tests; the filter is inert"
+            exit 1
+          fi
+          ctest --test-dir build -L fuzz --output-on-failure
 
       # The search. This one is timed, so it explores a different amount on
       # every run and is not a gate in the same sense: it fails only if it
@@ -604,6 +621,16 @@ jobs:
         run: |
           set -euo pipefail
           ./build/tests/mqtt_tests 2>&1 | tee mqtt-tests.log
+
+          # Same assertion as the fuzz job: this -E has to exclude mqtt_tests
+          # and leave the compile_* cases, and a pattern that matched nothing
+          # would silently run mqtt_tests twice instead.
+          all=$(ctest --test-dir build -N | grep -c "Test #" || true)
+          sel=$(ctest --test-dir build -N -E '^mqtt_tests$' | grep -c "Test #" || true)
+          if [ "$sel" -eq 0 ] || [ "$sel" -ge "$all" ]; then
+            echo "::error::-E '^mqtt_tests$' selects $sel of $all tests; the filter is inert"
+            exit 1
+          fi
           ctest --test-dir build --output-on-failure -E '^mqtt_tests$'
 
       # Recorded rather than asserted. sizeof is excluded from the compatibility
