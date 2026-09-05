@@ -250,11 +250,23 @@ if(NOT MSVC)
                 "configure with -DCMAKE_CXX_COMPILER=clang++")
         endif()
 
-        target_compile_options(paho_cpp_static PUBLIC
+        # PRIVATE: this instruments the library's own translation units, which
+        # is the whole point, without pushing the flags onto everything that
+        # links it. The fuzz executables set -fsanitize=fuzzer,address,undefined
+        # on themselves and bring the runtime with them, so nothing here needs
+        # to be exported -- and PUBLIC would instrument mqtt_tests and the
+        # examples too in a fuzz build, which is not what MQTT_FUZZ asks for.
+        target_compile_options(paho_cpp_static PRIVATE
             -fsanitize=fuzzer-no-link,address,undefined
             -fno-omit-frame-pointer -g)
+
+        # The link options do have to be exported. The instrumented objects
+        # reference __sanitizer_cov_* and __sancov_lowest_stack, so anything
+        # linking this library needs the runtime that defines them -- including
+        # mqtt_tests, which otherwise fails to link in a fuzz build with
+        # "undefined reference to __sanitizer_cov_trace_switch".
         target_link_options(paho_cpp_static PUBLIC
-            -fsanitize=address,undefined)
+            -fsanitize=fuzzer-no-link,address,undefined)
     endif()
 else()
     # /EHsc was already stripped from CMAKE_CXX_FLAGS above; this stops the
