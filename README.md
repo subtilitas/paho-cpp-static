@@ -196,7 +196,9 @@ Flash is 7.7 KiB (7866 bytes) for the non-template core, plus 8.9 KiB (9160
 bytes) for a `Client<Cfg>` instantiation touching every public entry point —
 less in a real application, since the linker drops what you never call.
 
-These are x86-64 GCC at `-Os`, indicative rather than a promise for Cortex-M.
+These are x86-64 GCC at `-Os` against ETL 20.48.1, indicative rather than a
+promise for Cortex-M. The ETL version moves them: see
+[docs/testing.md](docs/testing.md).
 Exact figures are remeasured on every pull request and merge, and published to
 [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint),
 which takes precedence if the two ever disagree.
