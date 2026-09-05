@@ -6,8 +6,15 @@ ones that can drift.
 
 "On every pull request and merge" below means what `ci.yml`, `cross.yml`,
 `sca.yml` and `codeql.yml` are triggered by: `pull_request`, and `push` to
-`main`. CodeQL also runs weekly, and the supply-chain and wiki jobs are
-additionally filtered by path. `release.yml` runs only on a `v*` tag.
+`main`. All four can also be started by hand with `workflow_dispatch`, and
+`codeql.yml` runs weekly on a schedule as well.
+
+Three workflows differ. `supply-chain.yml` runs weekly, and on pull requests and
+pushes to `main` that touch `CMakeLists.txt` or itself. `wiki.yml` runs on pull
+requests and pushes to `main` that touch the sources it derives from, and only
+*publishes* on the non-pull-request ones — a pull request uploads the generated
+pages as an artifact instead. `release.yml` runs on a `v*` tag, or by hand
+against an existing tag.
 
 ## The in-tree suite
 
