@@ -30,7 +30,8 @@ These may change in any release, including a patch.
 - **Anything in a `detail` namespace**, and anything under `src/`. `detail`
   means what it says.
 - **`sizeof(Client<Cfg>)` for a given `Cfg`.** It is measured and published on
-  every push, not promised. A field added to the client moves it. Size a build
+  every pull request and merge, not promised. A field added to the client moves
+  it. Size a build
   from the [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint)
   page, and re-read it when you upgrade.
 - **Flash and stack figures.** Measured, for the same reason.
