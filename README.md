@@ -28,9 +28,8 @@ run time.
   overruns as `bool` / `etl::optional` rather than throwing.
 
 About 2 200 lines of library and 1 KiB of RAM at the small end. Flash, RAM and
-stack are measured on every pull request and merge, on the host and
-cross-compiled for Cortex-M0+
-and Cortex-M4 — see
+stack are measured on every pull request and merge, both on the host and
+cross-compiled for Cortex-M0+ and Cortex-M4 — see
 [Memory footprint](https://github.com/subtilitas/paho-cpp-static/wiki/Memory-Footprint)
 and the [Cross-compile](https://github.com/subtilitas/paho-cpp-static/actions/workflows/cross.yml)
 job summaries.
