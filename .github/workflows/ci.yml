@@ -552,6 +552,15 @@ jobs:
       matrix:
         etl:
           - "20.39.0"   # below the footprint floor; API-compatible
+          # fms-yaml's pin. It is here because the two libraries get composed
+          # into one binary, and both FetchContent ETL: CMake resolves the
+          # duplicate declaration by first-declaration-wins, silently, so
+          # whichever is added first decides the ETL both compile against. When
+          # fms wins, this library builds on 20.39.4 -- below the footprint
+          # floor, so sizeof(Client<Cfg>) is 4608 rather than 4552 and every
+          # figure in docs/configuration.md is 56 bytes low. That is worth a
+          # tested configuration rather than a discovery.
+          - "20.39.4"
           - "20.40.0"   # below the footprint floor; API-compatible
           - "20.40.1"   # the floor: first version with the current footprint
           - "20.41.0"

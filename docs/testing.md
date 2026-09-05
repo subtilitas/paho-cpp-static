@@ -183,9 +183,20 @@ eight ETL releases on every pull request and merge, so the supported range is
 measured rather
 than assumed:
 
-20.39.0, 20.40.0, 20.40.1, 20.41.0, 20.43.0, 20.44.0, 20.46.0 and the pinned
-20.48.1. `tools/pins.py --check` fails if that matrix stops including the
+20.39.0, 20.39.4, 20.40.0, 20.40.1, 20.41.0, 20.43.0, 20.44.0, 20.46.0 and the
+pinned 20.48.1. `tools/pins.py --check` fails if that matrix stops including the
 pinned version.
+
+20.39.4 is there for a reason the others are not. It is
+[fms-yaml](https://github.com/subtilitas/fms-yaml)'s pin, and the two libraries
+are composed into one binary. Both fetch ETL with `FetchContent`, and CMake
+resolves a duplicate declaration by first-declaration-wins without saying so, so
+whichever is added first decides the ETL version both compile against. When
+fms-yaml wins, this library builds against 20.39.4 — below the footprint floor,
+so `sizeof(Client<DefaultConfig>)` is 4608 rather than 4552. Testing it makes
+that a known configuration rather than something discovered from a linker map.
+A consumer composing this library with another ETL-based one should check which
+version actually won.
 
 All eight compile under `-Werror` and pass all 174 cases, so the API floor is at
 or below 20.39.0. The **footprint** floor is higher: `etl::vector` carried 8
@@ -196,6 +207,8 @@ bytes larger on 20.39.0 and 20.40.0 — 4608 rather than 4552 at the defaults.
 |---|---|---|---|
 | 20.39.0 – 20.40.0 | 1312 | 4608 | 21136 |
 | 20.40.1 – 20.48.1 | 1256 | 4552 | 21080 |
+
+That covers 20.39.4, which sits in the first row.
 
 Every byte count in [configuration.md](configuration.md) and on the Memory
 footprint page is measured at the pinned version and holds from 20.40.1 up.
