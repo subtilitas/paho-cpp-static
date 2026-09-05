@@ -100,13 +100,17 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
-      # The zero-allocation suite replaces global operator new, which conflicts
-      # with ASan's own allocator interception, so it is excluded here. It runs
-      # in the plain build above.
+      # The whole suite, zero-allocation cases included. They were excluded
+      # here with `-E no_alloc` on the belief that replacing global operator new
+      # conflicts with ASan's allocator interception. Neither half held: ctest
+      # sees one test named `mqtt_tests` plus the three `compile_*` cases, so
+      # `no_alloc` matched nothing and never excluded anything, and the
+      # replacement is called under ASan anyway -- so the assertion means what
+      # it says here rather than passing vacuously.
       - name: Test
         env:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ctest --test-dir build --output-on-failure -E no_alloc
+        run: ctest --test-dir build --output-on-failure
 
   install:
     name: Installed package

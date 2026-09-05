@@ -41,9 +41,11 @@ diagnostics, and on in every CI job.
 ### Zero allocation
 
 `test_no_alloc.cpp` replaces global `operator new` and fails if it is called
-during construction, a full session, or the error and exhaustion paths. This is
-the reason the suite is excluded from the sanitizer job: replacing the allocator
-conflicts with ASan intercepting it.
+during construction, a full session, or the error and exhaustion paths.
+
+It runs under the sanitizers too. A replaced `operator new` is still the one
+called when ASan is linked, so the assertion holds there rather than passing
+because nothing reached it.
 
 ### Bounded work per step
 
@@ -90,7 +92,7 @@ pull request and merge:
 cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DMQTT_WERROR=ON \
   -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
-cmake --build build-san --parallel && ctest --test-dir build-san -E no_alloc
+cmake --build build-san --parallel && ctest --test-dir build-san
 ```
 
 ## Platforms
