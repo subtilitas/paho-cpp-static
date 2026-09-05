@@ -74,6 +74,23 @@ that the arithmetic looks right.
   rather than once per elapsed interval, the connect timeout measures correctly,
   and `ms_since_last_receive()` stays small.
 
+### Filters are asserted to filter
+
+A ctest filter that matches no test name is not an error. ctest runs everything
+and says nothing, so the job passes while doing something other than what it
+says — which is how `-E no_alloc` sat in the sanitizer job selecting all four
+tests, for as long as that job existed.
+
+The two jobs that filter — the fuzz gate with `-L fuzz`, and the ETL matrix with
+`-E '^mqtt_tests$'` — now count the tests ctest selects with and without the
+filter, and fail if the filtered count is zero or is not smaller than the
+unfiltered one. That catches an inert filter and an over-broad one. It does not
+check that the filter excludes the *right* tests, only that it excludes.
+
+The count is taken with `awk` rather than `grep -c`. `grep -c` exits 1 when it
+counts zero, so it needs `|| true` — which would also swallow a real `ctest`
+failure and report a broken build directory as an inert filter.
+
 ### Compile-failure tests
 
 `mqtt::detail::Handler` refuses a temporary callable, because the delegate it
