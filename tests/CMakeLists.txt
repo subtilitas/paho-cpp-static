@@ -36,8 +36,11 @@ endif()
 
 add_test(NAME mqtt_tests COMMAND mqtt_tests)
 
-# Separate registration so CI can exclude the allocation probe under ASan, whose
-# allocator interception conflicts with replacing global operator new.
+# One ctest test for the whole binary. The label is for selection and for the
+# timing summary ctest prints per label -- not for excluding anything: the
+# zero-allocation cases are inside this binary and cannot be filtered out by
+# name from here. They run under the sanitizers with everything else, which is
+# what a replaced global operator new supports.
 set_tests_properties(mqtt_tests PROPERTIES LABELS "unit")
 
 #-------------------------------------------------------------------------------
