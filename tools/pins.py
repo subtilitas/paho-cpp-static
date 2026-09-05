@@ -117,6 +117,23 @@ def check(pins: Pins) -> list[str]:
                     f"ETL {pins.etl_tag}\n      matrix: {', '.join(versions)}"
                 )
 
+    # A footprint figure is only true for the ETL it was measured against -- the
+    # 20.40.1 layout change moves sizeof(Client<Cfg>) by 56 bytes. Every doc that
+    # qualifies a figure with "against ETL <version>" therefore has to name the
+    # pinned one, or it is quoting numbers from a build nobody makes.
+    docs = [pins.repo / "README.md"] + sorted((pins.repo / "docs").glob("*.md"))
+    for doc in docs:
+        if not doc.exists():
+            continue
+        for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            for found in re.findall(r"against ETL (\d+\.\d+\.\d+)", line):
+                if found != pins.etl_tag:
+                    rel = doc.relative_to(pins.repo)
+                    problems.append(
+                        f"{rel}:{lineno}: figures are qualified 'against ETL "
+                        f"{found}', CMakeLists pins {pins.etl_tag}"
+                    )
+
     return problems
 
 

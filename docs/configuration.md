@@ -47,8 +47,8 @@ residue is 2 bytes for `max_inflight_in`, `max_topic_len + 64` bytes for
 `max_persisted_msg_size` to `0` alongside `max_inflight_out = 0` to shrink that
 buffer to a single byte.
 
-Measured on x86-64 with GCC at `-Os`, against `sizeof(Client<DefaultConfig>)`
-of 4552 bytes and changing one thing at a time:
+Measured on x86-64 with GCC at `-Os` against ETL 20.48.1, from a
+`sizeof(Client<DefaultConfig>)` of 4552 bytes, changing one thing at a time:
 
 - `max_inflight_out = 0` — 3752 bytes, saving 800.
 - `max_inflight_out = 0` and `max_persisted_msg_size = 0` — 3496 bytes, saving 1056.
@@ -240,7 +240,9 @@ the session ends with `Error::ConnectTimeout`.
 
 ## Worked profiles
 
-Figures are x86-64 GCC at `-Os`, measured with `sizeof()`.
+Figures are x86-64 GCC at `-Os` against ETL 20.48.1, measured with `sizeof()`.
+The ETL version matters: it moves these by 56 bytes below 20.40.1, so see the
+[ETL version range](testing.md) if you supply your own.
 
 ### Constrained sensor node — telemetry only
 
