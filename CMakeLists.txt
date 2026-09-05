@@ -239,6 +239,17 @@ if(NOT MSVC)
     # inside src/ needs the library compiled with them, not merely linked
     # against them.
     if(MQTT_FUZZ)
+        # Guarded here as well as in tests/CMakeLists.txt. That check only runs
+        # when the tests are configured, so with MQTT_BUILD_TESTS=OFF -- or as a
+        # subproject, where the same happens -- a non-clang build configured
+        # cleanly and then failed with "unrecognized argument to -fsanitize=",
+        # which names the flag but not the option that asked for it.
+        if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            message(FATAL_ERROR
+                "MQTT_FUZZ needs clang for -fsanitize=fuzzer; "
+                "configure with -DCMAKE_CXX_COMPILER=clang++")
+        endif()
+
         target_compile_options(paho_cpp_static PUBLIC
             -fsanitize=fuzzer-no-link,address,undefined
             -fno-omit-frame-pointer -g)
