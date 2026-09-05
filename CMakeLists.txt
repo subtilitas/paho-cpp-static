@@ -222,6 +222,52 @@ if(NOT MSVC)
     if(MQTT_STACK_USAGE)
         target_compile_options(paho_cpp_static PRIVATE -fstack-usage)
     endif()
+
+    # The library has to carry the fuzzer's instrumentation too, not just the
+    # harness.
+    #
+    # libFuzzer is a coverage-guided fuzzer: it decides what to mutate next from
+    # the edges a run reaches. Those edges come from SanitizerCoverage, which is
+    # compile-time. Building only tests/fuzz/*.cpp with -fsanitize=fuzzer leaves
+    # the library uninstrumented, so the fuzzer sees the harness's own branches
+    # and nothing of what it is fuzzing -- it reports a coverage figure that
+    # never moves and mutates blindly for as long as it is given.
+    #
+    # fuzzer-no-link, because the executables link the fuzzer runtime and its
+    # main(); the library only needs the instrumentation. address,undefined for
+    # the same reason they are on the executables: a stack or global overflow
+    # inside src/ needs the library compiled with them, not merely linked
+    # against them.
+    if(MQTT_FUZZ)
+        # Guarded here as well as in tests/CMakeLists.txt. That check only runs
+        # when the tests are configured, so with MQTT_BUILD_TESTS=OFF -- or as a
+        # subproject, where the same happens -- a non-clang build configured
+        # cleanly and then failed with "unrecognized argument to -fsanitize=",
+        # which names the flag but not the option that asked for it.
+        if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            message(FATAL_ERROR
+                "MQTT_FUZZ needs clang for -fsanitize=fuzzer; "
+                "configure with -DCMAKE_CXX_COMPILER=clang++")
+        endif()
+
+        # PRIVATE: this instruments the library's own translation units, which
+        # is the whole point, without pushing the flags onto everything that
+        # links it. The fuzz executables set -fsanitize=fuzzer,address,undefined
+        # on themselves and bring the runtime with them, so nothing here needs
+        # to be exported -- and PUBLIC would instrument mqtt_tests and the
+        # examples too in a fuzz build, which is not what MQTT_FUZZ asks for.
+        target_compile_options(paho_cpp_static PRIVATE
+            -fsanitize=fuzzer-no-link,address,undefined
+            -fno-omit-frame-pointer -g)
+
+        # The link options do have to be exported. The instrumented objects
+        # reference __sanitizer_cov_* and __sancov_lowest_stack, so anything
+        # linking this library needs the runtime that defines them -- including
+        # mqtt_tests, which otherwise fails to link in a fuzz build with
+        # "undefined reference to __sanitizer_cov_trace_switch".
+        target_link_options(paho_cpp_static PUBLIC
+            -fsanitize=fuzzer-no-link,address,undefined)
+    endif()
 else()
     # /EHsc was already stripped from CMAKE_CXX_FLAGS above; this stops the
     # MSVC standard library from introducing throw sites of its own.
