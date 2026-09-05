@@ -103,7 +103,7 @@ jobs:
       # The whole suite, zero-allocation cases included. They were excluded
       # here with `-E no_alloc` on the belief that replacing global operator new
       # conflicts with ASan's allocator interception. Neither half held: ctest
-      # sees one test named `mqtt_tests` and three compile-failure cases, so
+      # sees one test named `mqtt_tests` plus the three `compile_*` cases, so
       # `no_alloc` matched nothing and never excluded anything, and the
       # replacement is called under ASan anyway -- so the assertion means what
       # it says here rather than passing vacuously.
