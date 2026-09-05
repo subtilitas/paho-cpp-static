@@ -87,6 +87,10 @@ filter, and fail if the filtered count is zero or is not smaller than the
 unfiltered one. That catches an inert filter and an over-broad one. It does not
 check that the filter excludes the *right* tests, only that it excludes.
 
+The count is taken with `awk` rather than `grep -c`. `grep -c` exits 1 when it
+counts zero, so it needs `|| true` — which would also swallow a real `ctest`
+failure and report a broken build directory as an inert filter.
+
 ### Compile-failure tests
 
 `mqtt::detail::Handler` refuses a temporary callable, because the delegate it

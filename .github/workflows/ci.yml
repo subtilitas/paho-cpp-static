@@ -516,8 +516,13 @@ jobs:
       - name: Replay the corpus
         run: |
           set -euo pipefail
-          all=$(ctest --test-dir build -N | grep -c "Test #" || true)
-          sel=$(ctest --test-dir build -N -L fuzz | grep -c "Test #" || true)
+          # awk rather than `grep -c ... || true`: grep exits 1 on zero
+          # matches, and swallowing that with `|| true` would swallow a genuine
+          # ctest failure too -- a broken build directory would be reported here
+          # as an inert filter. awk exits 0 whatever it counts, so pipefail
+          # still surfaces ctest's own error.
+          all=$(ctest --test-dir build -N | awk '/Test #/{c++} END{print c+0}')
+          sel=$(ctest --test-dir build -N -L fuzz | awk '/Test #/{c++} END{print c+0}')
           if [ "$sel" -eq 0 ] || [ "$sel" -ge "$all" ]; then
             echo "::error::-L fuzz selects $sel of $all tests; the filter is inert"
             exit 1
@@ -625,8 +630,8 @@ jobs:
           # Same assertion as the fuzz job: this -E has to exclude mqtt_tests
           # and leave the compile_* cases, and a pattern that matched nothing
           # would silently run mqtt_tests twice instead.
-          all=$(ctest --test-dir build -N | grep -c "Test #" || true)
-          sel=$(ctest --test-dir build -N -E '^mqtt_tests$' | grep -c "Test #" || true)
+          all=$(ctest --test-dir build -N | awk '/Test #/{c++} END{print c+0}')
+          sel=$(ctest --test-dir build -N -E '^mqtt_tests$' | awk '/Test #/{c++} END{print c+0}')
           if [ "$sel" -eq 0 ] || [ "$sel" -ge "$all" ]; then
             echo "::error::-E '^mqtt_tests$' selects $sel of $all tests; the filter is inert"
             exit 1
