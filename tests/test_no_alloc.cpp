@@ -175,8 +175,13 @@ TEST(zero_allocations_during_a_full_session)
 
     // Keep-alive and retransmission paths.
     uint16_t id3 = 0;
-    client.publish(etl::string_view("a/b"), etl::string_view("retry"), QoS::AtLeastOnce, false,
-                   &id3);
+    // Asserted, not (void): this one is the happy path the retransmission below
+    // depends on, so a publish() that started refusing would otherwise leave
+    // this case passing while exercising nothing. CHECK rather than REQUIRE
+    // because the probe is armed here -- REQUIRE expands to `return`, which
+    // would leave alloc_probe::armed set for every later test in this binary.
+    CHECK(client.publish(etl::string_view("a/b"), etl::string_view("retry"), QoS::AtLeastOnce,
+                         false, &id3) == Error::Ok);
     client.step();
     clock.advance(8000);
     client.step();   // PINGREQ plus a retransmission
@@ -236,7 +241,7 @@ TEST(zero_allocations_under_error_and_exhaustion_paths)
 
     ConnectOptions opts;
     opts.client_id = etl::string_view("probe2");
-    client.connect(opts);
+    REQUIRE(client.connect(opts) == Error::Ok);
     client.step();
     sim::push_connack(transport, false);
     client.step();
@@ -244,20 +249,20 @@ TEST(zero_allocations_under_error_and_exhaustion_paths)
     // Fill the inflight window, then keep pushing.
     for (int i = 0; i < 10; ++i)
     {
-        client.publish(etl::string_view("a/b"), etl::string_view("x"), QoS::AtLeastOnce);
+        (void)client.publish(etl::string_view("a/b"), etl::string_view("x"), QoS::AtLeastOnce);
     }
 
     // Oversized payload, bad topics, bad filters.
     uint8_t big[400] = {};
-    client.publish(etl::string_view("a/b"), etl::span<const uint8_t>(big, sizeof(big)),
-                   QoS::ExactlyOnce);
-    client.publish(etl::string_view("a/#"), etl::string_view("x"));
-    client.subscribe(etl::string_view("bad/#/filter"));
+    (void)client.publish(etl::string_view("a/b"), etl::span<const uint8_t>(big, sizeof(big)),
+                         QoS::ExactlyOnce);
+    (void)client.publish(etl::string_view("a/#"), etl::string_view("x"));
+    (void)client.subscribe(etl::string_view("bad/#/filter"));
 
     // Fill the subscription and pending-ack tables.
     const char* filters[] = {"f1", "f2", "f3", "f4", "f5", "f6"};
     for (size_t i = 0; i < 6; ++i)
-        client.subscribe(etl::string_view(filters[i]));
+        (void)client.subscribe(etl::string_view(filters[i]));
 
     client.step();
 

@@ -281,7 +281,7 @@ public:
     /// Begin connecting. Non-blocking: the CONNECT packet is serialized
     /// immediately, so `opts` and everything it points at may be destroyed as
     /// soon as this returns. Progress happens in step().
-    Error connect(const ConnectOptions& opts) noexcept
+    [[nodiscard]] Error connect(const ConnectOptions& opts) noexcept
     {
         if (state_ != State::Idle)
             return Error::AlreadyConnected;
@@ -376,9 +376,9 @@ public:
     /// Error::PayloadTooLarge when the packet exceeds max_persisted_msg_size.
     ///
     /// @param out_packet_id Optional; receives the assigned id for QoS > 0.
-    Error publish(etl::string_view topic, etl::span<const uint8_t> payload,
-                  QoS qos = QoS::AtMostOnce, bool retain = false,
-                  uint16_t* out_packet_id = nullptr) noexcept
+    [[nodiscard]] Error publish(etl::string_view topic, etl::span<const uint8_t> payload,
+                                QoS qos = QoS::AtMostOnce, bool retain = false,
+                                uint16_t* out_packet_id = nullptr) noexcept
     {
         if (state_ != State::Connected)
             return Error::NotConnected;
@@ -436,8 +436,9 @@ public:
     }
 
     /// Convenience overload for text payloads.
-    Error publish(etl::string_view topic, etl::string_view payload, QoS qos = QoS::AtMostOnce,
-                  bool retain = false, uint16_t* out_packet_id = nullptr) noexcept
+    [[nodiscard]] Error publish(etl::string_view topic, etl::string_view payload,
+                                QoS qos = QoS::AtMostOnce, bool retain = false,
+                                uint16_t* out_packet_id = nullptr) noexcept
     {
         return publish(topic,
                        etl::span<const uint8_t>(
@@ -450,9 +451,9 @@ public:
     /// The filter is copied into the subscription table, so the caller's string
     /// need not outlive the call. The subscription is retained across
     /// reconnects and re-sent automatically.
-    Error subscribe(etl::string_view filter, QoS qos = QoS::AtMostOnce,
-                    MessageHandler handler       = MessageHandler(),
-                    uint16_t*      out_packet_id = nullptr) noexcept
+    [[nodiscard]] Error subscribe(etl::string_view filter, QoS qos = QoS::AtMostOnce,
+                                  MessageHandler handler       = MessageHandler(),
+                                  uint16_t*      out_packet_id = nullptr) noexcept
     {
         const TopicSubscription one{filter, qos};
         return subscribe(etl::span<const TopicSubscription>(&one, 1), handler, out_packet_id);
@@ -461,9 +462,9 @@ public:
     /// Subscribe to several filters in one SUBSCRIBE packet. All entries share
     /// `handler`; pass a default-constructed handler to route them to the
     /// on_message fallback instead.
-    Error subscribe(etl::span<const TopicSubscription> subs,
-                    MessageHandler                     handler       = MessageHandler(),
-                    uint16_t*                          out_packet_id = nullptr) noexcept
+    [[nodiscard]] Error subscribe(etl::span<const TopicSubscription> subs,
+                                  MessageHandler                     handler = MessageHandler(),
+                                  uint16_t* out_packet_id                    = nullptr) noexcept
     {
         if (state_ != State::Connected)
             return Error::NotConnected;
@@ -544,13 +545,14 @@ public:
     }
 
     /// Unsubscribe from one filter. The table entry is removed on UNSUBACK.
-    Error unsubscribe(etl::string_view filter, uint16_t* out_packet_id = nullptr) noexcept
+    [[nodiscard]] Error unsubscribe(etl::string_view filter,
+                                    uint16_t*        out_packet_id = nullptr) noexcept
     {
         return unsubscribe(etl::span<const etl::string_view>(&filter, 1), out_packet_id);
     }
 
-    Error unsubscribe(etl::span<const etl::string_view> filters,
-                      uint16_t*                         out_packet_id = nullptr) noexcept
+    [[nodiscard]] Error unsubscribe(etl::span<const etl::string_view> filters,
+                                    uint16_t* out_packet_id = nullptr) noexcept
     {
         if (state_ != State::Connected)
             return Error::NotConnected;
@@ -623,6 +625,13 @@ public:
     /// draining, so a nested call would re-drain the same bytes, re-enter the
     /// same handler and recurse without bound -- breaking the bounded-stack
     /// guarantee this library measures on target in CI.
+    /// Not [[nodiscard]], deliberately, unlike connect(), publish(), subscribe()
+    /// and unsubscribe(), which all carry it. A
+    /// loop that calls step() and then asks is_connected() is a correct use,
+    /// and it is the shape the examples take -- so the attribute would report
+    /// working code. The four calls that carry it are the ones whose returned
+    /// Error is the only report of the failure: nothing else tells a caller
+    /// that a publish was refused.
     Error step() noexcept
     {
         if (in_step_)

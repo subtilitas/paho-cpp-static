@@ -122,7 +122,7 @@ int recv_calls_for_one_step(size_t budget) noexcept
     fakes::FakeClock clock;
     SmallClient      client{transport, clock};
 
-    client.connect(options());
+    CHECK(client.connect(options()) == Error::Ok);
     client.step();              // transport connect, CONNECT out, CONNACK in
     transport.recv_calls = 0;   // measure the next call, not the handshake
     client.step();
@@ -182,7 +182,7 @@ TEST(a_flooded_client_still_makes_progress_across_steps)
     fakes::FakeClock clock;
     SmallClient      client{transport, clock};
 
-    client.connect(options());
+    REQUIRE(client.connect(options()) == Error::Ok);
     client.step();
     CHECK(client.is_connected());
 
@@ -206,7 +206,7 @@ TEST(a_receive_buffer_packed_with_packets_drains_in_one_step)
     fakes::FakeClock clock;
     SmallClient      client{transport, clock};
 
-    client.connect(options());
+    REQUIRE(client.connect(options()) == Error::Ok);
     client.step();
     CHECK(client.is_connected());
 

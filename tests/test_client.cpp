@@ -107,7 +107,7 @@ TEST(client_reports_refused_connection)
     auto    on_dis = [&](Error e) { reason = e; };
     f.client.on_disconnect(on_dis);
 
-    f.client.connect(f.default_options());
+    REQUIRE(f.client.connect(f.default_options()) == Error::Ok);
     f.client.step();
     sim::push_connack(f.transport, false, ConnackCode::NotAuthorized);
     f.client.step();
@@ -125,7 +125,7 @@ TEST(client_times_out_a_stalled_handshake)
     auto    on_dis = [&](Error e) { reason = e; };
     f.client.on_disconnect(on_dis);
 
-    f.client.connect(f.default_options());
+    REQUIRE(f.client.connect(f.default_options()) == Error::Ok);
     f.client.step();
     CHECK(f.client.state() == State::AwaitingConnack);
 
@@ -553,8 +553,8 @@ TEST(client_unsubscribes_on_unsuback)
     REQUIRE(f.bring_up());
 
     uint16_t sub_id = 0;
-    f.client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce, TestClient::MessageHandler(),
-                       &sub_id);
+    REQUIRE(f.client.subscribe(etl::string_view("a/b"), QoS::AtMostOnce,
+                               TestClient::MessageHandler(), &sub_id) == Error::Ok);
     f.client.step();
     const uint8_t granted[] = {0x00};
     sim::push_suback(f.transport, sub_id, granted, 1);
@@ -630,8 +630,8 @@ TEST(client_unsubscribes_regardless_of_argument_order)
     for (size_t i = 0; i < 2; ++i)
     {
         uint16_t id = 0;
-        f.client.subscribe(etl::string_view(names[i]), QoS::AtMostOnce,
-                           TestClient::MessageHandler(), &id);
+        REQUIRE(f.client.subscribe(etl::string_view(names[i]), QoS::AtMostOnce,
+                                   TestClient::MessageHandler(), &id) == Error::Ok);
         f.client.step();
         sim::push_suback(f.transport, id, granted, 1);
         f.client.step();
@@ -686,8 +686,8 @@ TEST(client_resubscribes_when_broker_lost_the_session)
     REQUIRE(f.bring_up());
 
     uint16_t id = 0;
-    f.client.subscribe(etl::string_view("a/b"), QoS::AtLeastOnce, TestClient::MessageHandler(),
-                       &id);
+    REQUIRE(f.client.subscribe(etl::string_view("a/b"), QoS::AtLeastOnce,
+                               TestClient::MessageHandler(), &id) == Error::Ok);
     f.client.step();
     const uint8_t granted[] = {0x01};
     sim::push_suback(f.transport, id, granted, 1);
@@ -719,8 +719,8 @@ TEST(client_resubscribes_after_a_clean_session_reconnect)
     REQUIRE(f.bring_up());   // clean_session = true
 
     uint16_t id = 0;
-    f.client.subscribe(etl::string_view("sensors/#"), QoS::AtLeastOnce,
-                       TestClient::MessageHandler(), &id);
+    REQUIRE(f.client.subscribe(etl::string_view("sensors/#"), QoS::AtLeastOnce,
+                               TestClient::MessageHandler(), &id) == Error::Ok);
     f.client.step();
     const uint8_t granted[] = {0x01};
     sim::push_suback(f.transport, id, granted, 1);
@@ -1243,8 +1243,8 @@ TEST(client_keeps_inflight_across_a_non_clean_reconnect)
     REQUIRE(f.client.is_connected());
 
     uint16_t id = 0;
-    f.client.publish(etl::string_view("a/b"), etl::string_view("hi"), QoS::AtLeastOnce, false,
-                     &id);
+    REQUIRE(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"), QoS::AtLeastOnce,
+                             false, &id) == Error::Ok);
     f.client.step();
     CHECK_EQ(f.client.inflight_count(), size_t{1});
 
@@ -1269,7 +1269,8 @@ TEST(client_discards_inflight_on_a_clean_reconnect)
     Fixture f;
     REQUIRE(f.bring_up());   // clean_session = true
 
-    f.client.publish(etl::string_view("a/b"), etl::string_view("hi"), QoS::AtLeastOnce);
+    REQUIRE(f.client.publish(etl::string_view("a/b"), etl::string_view("hi"),
+                             QoS::AtLeastOnce) == Error::Ok);
     CHECK_EQ(f.client.inflight_count(), size_t{1});
 
     f.client.abort();
