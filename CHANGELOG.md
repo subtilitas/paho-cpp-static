@@ -35,10 +35,13 @@ second declaration that could drift.
 ### Changed
 
 - **Eighteen call sites in the tests that dropped one of those returns.** Twelve
-  were setup calls that must succeed and are now asserted, which is what took
-  the suite from 1246 checks to 1260. Six are in `test_no_alloc.cpp`, which
-  deliberately drives oversized payloads, bad topics and full tables to prove
-  none of them allocates; those carry `(void)` and say so. No defect was found
+  were setup calls that must succeed and are now asserted, along with the
+  publish the retransmission case depends on — which is what took the suite from
+  1246 checks to 1261. Five are in `test_no_alloc.cpp`, which deliberately
+  drives oversized payloads, bad topics and full tables to prove none of them
+  allocates; those carry `(void)` and say so. Assertions inside that file's
+  armed region use `CHECK` rather than `REQUIRE`, because `REQUIRE` expands to
+  `return` and would leave the allocation probe armed for every later test. No defect was found
   behind any of them — each was already guarded indirectly, in that a failed
   call would have failed a later assertion.
 

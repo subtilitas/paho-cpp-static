@@ -625,7 +625,8 @@ public:
     /// draining, so a nested call would re-drain the same bytes, re-enter the
     /// same handler and recurse without bound -- breaking the bounded-stack
     /// guarantee this library measures on target in CI.
-    /// Not [[nodiscard]], deliberately, unlike publish() and subscribe(). A
+    /// Not [[nodiscard]], deliberately, unlike connect(), publish(), subscribe()
+    /// and unsubscribe(), which all carry it. A
     /// loop that calls step() and then asks is_connected() is a correct use,
     /// and it is the shape the examples take -- so the attribute would report
     /// working code. The four calls that carry it are the ones whose returned

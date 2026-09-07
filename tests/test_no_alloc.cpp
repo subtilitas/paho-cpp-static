@@ -175,8 +175,13 @@ TEST(zero_allocations_during_a_full_session)
 
     // Keep-alive and retransmission paths.
     uint16_t id3 = 0;
-    (void)client.publish(etl::string_view("a/b"), etl::string_view("retry"), QoS::AtLeastOnce,
-                         false, &id3);
+    // Asserted, not (void): this one is the happy path the retransmission below
+    // depends on, so a publish() that started refusing would otherwise leave
+    // this case passing while exercising nothing. CHECK rather than REQUIRE
+    // because the probe is armed here -- REQUIRE expands to `return`, which
+    // would leave alloc_probe::armed set for every later test in this binary.
+    CHECK(client.publish(etl::string_view("a/b"), etl::string_view("retry"), QoS::AtLeastOnce,
+                         false, &id3) == Error::Ok);
     client.step();
     clock.advance(8000);
     client.step();   // PINGREQ plus a retransmission
