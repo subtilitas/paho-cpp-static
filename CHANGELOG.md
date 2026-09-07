@@ -37,7 +37,8 @@ second declaration that could drift.
 - **Eighteen call sites in the tests that dropped one of those returns.** Twelve
   were setup calls that must succeed and are now asserted, along with the
   publish the retransmission case depends on — which is what took the suite from
-  1246 checks to 1261. Five are in `test_no_alloc.cpp`, which deliberately
+  1246 checks to 1261. That is 13 call sites but 15 checks: one is inside a
+  two-iteration loop, and one is in a helper called twice. Five are in `test_no_alloc.cpp`, which deliberately
   drives oversized payloads, bad topics and full tables to prove none of them
   allocates; those carry `(void)` and say so. Assertions inside that file's
   armed region use `CHECK` rather than `REQUIRE`, because `REQUIRE` expands to
