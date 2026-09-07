@@ -23,7 +23,16 @@ target_link_libraries(mqtt_tests PRIVATE paho_cpp_static)
 target_include_directories(mqtt_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(NOT MSVC)
-    target_compile_options(mqtt_tests PRIVATE -Wall -Wextra -Wpedantic)
+    # The same set the library carries. The tests do the same length and index
+    # arithmetic the library does, on values that came off a fake wire, so a
+    # narrowing here is as much a defect as one in src/ -- and holding the two
+    # to different standards is how a test comes to assert something the library
+    # would not compile. Measured at zero findings when this was widened.
+    target_compile_options(mqtt_tests PRIVATE
+        -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion
+        -Wold-style-cast -Wcast-align -Wcast-qual -Wundef -Wimplicit-fallthrough
+        -Wunused -Woverloaded-virtual -Wnon-virtual-dtor -Wdouble-promotion
+        -Wformat=2)
 
     # Under MQTT_WERROR the tests are held to the same standard as the library.
     # -Wswitch caught a test whose handler silently did nothing -- an enumerator

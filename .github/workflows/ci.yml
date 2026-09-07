@@ -75,10 +75,31 @@ jobs:
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
 
+  # Two legs, because the two compilers do not offer the same checks. GCC has
+  # neither -fsanitize=integer nor implicit-conversion; it rejects them outright.
+  # This job pinned no compiler and therefore took the runner's default GCC, so
+  # adding those to it would have configured checks that never ran.
   sanitizers:
-    name: Sanitizers
+    name: Sanitizers / ${{ matrix.cc }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # no_san is per-leg because GCC rejects -fno-sanitize= for a check it
+          # does not have: "unrecognized argument to -fno-sanitize= option".
+          - { cc: gcc,   cxx: g++,     san: "address,undefined", no_san: "" }
+          # integer reports arithmetic that actually wrapped and
+          # implicit-conversion a narrowing that actually changed a value, as
+          # against the compile-time -Wconversion pass which reports the ones
+          # that might. unsigned-integer-overflow is excluded: it is not
+          # undefined behaviour, and mqtt::elapsed_ms depends on it --
+          # transport.hpp says so at the site. Leaving it on reports that
+          # function, the fake clock, and nothing else.
+          - { cc: clang, cxx: clang++,
+              san: "address,undefined,integer,implicit-conversion",
+              no_san: "-fno-sanitize=unsigned-integer-overflow" }
     steps:
       - uses: actions/checkout@v7
 
@@ -86,16 +107,19 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/_deps
-          key: etl-asan-${{ env.ETL_COMMIT }}
+          key: etl-asan-${{ matrix.cc }}-${{ env.ETL_COMMIT }}
 
-      - name: Configure with ASan and UBSan
+      - name: Configure with the sanitizers
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DMQTT_BUILD_EXAMPLES=OFF \
             -DMQTT_WERROR=ON \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+            -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.san }} ${{ matrix.no_san }} -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${{ matrix.san }}"
 
       - name: Build
         run: cmake --build build --parallel

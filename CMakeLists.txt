@@ -204,10 +204,22 @@ if(NOT MSVC)
         target_compile_options(paho_cpp_static PUBLIC -fno-rtti)
     endif()
 
+    # -Wcast-qual, -Wundef and -Wimplicit-fallthrough were added after an audit
+    # of what a deep static analyser reports that this set did not ask about.
+    # All three found nothing here, so they pin a property that already holds
+    # rather than opening a cleanup -- which was checked by compiling a
+    # deliberate violation of each into src/ and confirming it fired, because a
+    # zero from a flag that never reached the translation unit looks exactly
+    # like a real one.
+    #
+    # -Wswitch-default is deliberately absent. It wants a default arm on every
+    # switch over an enumeration, which is what stops -Wswitch reporting an
+    # enumerator nobody handled -- and that report is load-bearing here.
     target_compile_options(paho_cpp_static PRIVATE
         -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion
-        -Wold-style-cast -Wcast-align -Wunused -Woverloaded-virtual
-        -Wnon-virtual-dtor -Wdouble-promotion -Wformat=2)
+        -Wold-style-cast -Wcast-align -Wcast-qual -Wundef -Wimplicit-fallthrough
+        -Wunused -Woverloaded-virtual -Wnon-virtual-dtor -Wdouble-promotion
+        -Wformat=2)
 
     if(MQTT_WERROR)
         target_compile_options(paho_cpp_static PRIVATE -Werror)
