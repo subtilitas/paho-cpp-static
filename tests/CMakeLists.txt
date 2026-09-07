@@ -23,7 +23,13 @@ target_link_libraries(mqtt_tests PRIVATE paho_cpp_static)
 target_include_directories(mqtt_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(NOT MSVC)
-    target_compile_options(mqtt_tests PRIVATE -Wall -Wextra -Wpedantic)
+    # MQTT_WARNING_FLAGS is the library's own list, set in the top-level
+    # CMakeLists.txt -- not a copy of it. The tests do the same length and index
+    # arithmetic the library does, on values that came off a fake wire, so a
+    # narrowing here is as much a defect as one in src/, and holding the two to
+    # different standards is how a test comes to assert something the library
+    # would not compile.
+    target_compile_options(mqtt_tests PRIVATE ${MQTT_WARNING_FLAGS})
 
     # Under MQTT_WERROR the tests are held to the same standard as the library.
     # -Wswitch caught a test whose handler silently did nothing -- an enumerator

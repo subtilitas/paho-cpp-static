@@ -102,14 +102,43 @@ rejected every callable from passing.
 
 ## Sanitizers
 
-AddressSanitizer and UndefinedBehaviorSanitizer, `halt_on_error=1`, on every
-pull request and merge:
+Two legs, because the two compilers do not offer the same checks.
+
+| Leg | Checks |
+|---|---|
+| GCC | `address,undefined` |
+| Clang | `address,undefined,integer,implicit-conversion` |
+
+`integer` and `implicit-conversion` are Clang-only — GCC rejects both outright.
+They are the runtime counterpart to the `-Wconversion` pass: the compile-time
+warning reports arithmetic that *might* change a value, these report arithmetic
+that *did*.
+
+`unsigned-integer-overflow` is excluded from the Clang leg. It is not undefined
+behaviour, and `mqtt::elapsed_ms` depends on it — `transport.hpp` says so at the
+site, and the 32-bit millisecond clock wrapping every 49.7 days is the whole
+reason that function is written as an unsigned subtraction. With the check on it
+reports that function and the fake clock, and nothing else.
+
+The exclusion is applied per leg rather than to both, because GCC rejects
+`-fno-sanitize=` for a check it does not have.
+
+On every pull request and merge:
 
 ```bash
+# GCC leg
 cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DMQTT_WERROR=ON \
   -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
   -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
 cmake --build build-san --parallel && ctest --test-dir build-san
+
+# Clang leg
+SAN=address,undefined,integer,implicit-conversion
+cmake -S . -B build-san-clang -DCMAKE_BUILD_TYPE=Debug -DMQTT_WERROR=ON \
+  -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_CXX_FLAGS="-fsanitize=$SAN -fno-sanitize=unsigned-integer-overflow -fno-omit-frame-pointer" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=$SAN"
+cmake --build build-san-clang --parallel && ctest --test-dir build-san-clang
 ```
 
 ## Platforms
@@ -261,6 +290,25 @@ A separate job installs the library and builds `tests/consumer/` out of tree
 against the install prefix only. Building inside the repository proves nothing
 about `install(EXPORT)`: `add_subdirectory()` and `FetchContent` both bypass the
 generated config, so a broken one stays invisible until a consumer hits it.
+
+## Compiler warnings
+
+The library and the tests carry the same set:
+
+```
+-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion
+-Wold-style-cast -Wcast-align -Wcast-qual -Wundef -Wimplicit-fallthrough
+-Wunused -Woverloaded-virtual -Wnon-virtual-dtor -Wdouble-promotion -Wformat=2
+```
+
+`MQTT_WERROR=ON` makes them errors. Every CI job sets it except the fuzz job,
+which does not. The tests are held
+to the library's set because they do the same length and index arithmetic on
+values that came off a fake wire.
+
+`-Wswitch-default` is deliberately absent. It wants a default arm on every
+switch over an enumeration, which is exactly what stops `-Wswitch` reporting an
+enumerator nobody handled — and that report is load-bearing here.
 
 ## Static analysis
 
