@@ -301,7 +301,8 @@ The library and the tests carry the same set:
 -Wunused -Woverloaded-virtual -Wnon-virtual-dtor -Wdouble-promotion -Wformat=2
 ```
 
-`MQTT_WERROR=ON` makes them errors, and every CI job sets it. The tests are held
+`MQTT_WERROR=ON` makes them errors. Every CI job sets it except the fuzz job,
+which does not. The tests are held
 to the library's set because they do the same length and index arithmetic on
 values that came off a fake wire.
 
