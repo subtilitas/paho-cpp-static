@@ -39,6 +39,15 @@ These may change in any release, including a patch.
 - **The ETL version.** ETL appears in this library's public headers, so its
   version is visible to a consumer, but which version is pinned is not part of
   this promise. `CMakeLists.txt` records the pin.
+- **New compiler diagnostics on the covered surface.** Adding `[[nodiscard]]`
+  to a function, or anything else that makes a compiler warn about code it
+  previously accepted, is not a breaking change here. It can still fail a build
+  that compiles with `-Werror`, and that is a real cost -- but the alternative
+  is that a library which reports every failure through a return value can never
+  gain the attribute that stops one being dropped. What is promised is that a
+  correct program keeps *compiling*, not that it keeps compiling without
+  warnings, and each such change is called out in `CHANGELOG.md`.
+
 - **The layout of a release archive**, and the contents of the generated wiki
   pages.
 - **Anything the library does with input the MQTT 3.1.1 specification forbids.**

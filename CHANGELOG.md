@@ -14,6 +14,34 @@ version rather than a major one. None of those guarantees applied to them.
 refuses a tag that disagrees with it. The entries here are a record, not a
 second declaration that could drift.
 
+## [Unreleased]
+
+### Added
+
+- **`[[nodiscard]]` on `connect()`, `publish()`, `subscribe()` and
+  `unsubscribe()`.** The library is compiled `-fno-exceptions`, so the returned
+  `Error` is the only report a caller gets that one of these was refused.
+  Dropping it silently discarded that report; it is now a compiler warning at
+  the call site. Seven declarations carry it, counting overloads.
+
+  `step()` and `disconnect()` deliberately do not. A loop that calls `step()`
+  and then asks `is_connected()` is a correct use and the shape the examples
+  take, so the attribute would report working code.
+
+  This can fail a consumer's `-Werror` build. `docs/compatibility.md` now states
+  that a new diagnostic is not a breaking change — what is promised is that a
+  correct program keeps compiling, not that it compiles without warnings.
+
+### Changed
+
+- **Eighteen call sites in the tests that dropped one of those returns.** Twelve
+  were setup calls that must succeed and are now asserted, which is what took
+  the suite from 1246 checks to 1260. Six are in `test_no_alloc.cpp`, which
+  deliberately drives oversized payloads, bad topics and full tables to prove
+  none of them allocates; those carry `(void)` and say so. No defect was found
+  behind any of them — each was already guarded indirectly, in that a failed
+  call would have failed a later assertion.
+
 ## [1.0.0] — 2026-09-04
 
 The first release under the compatibility promise in
