@@ -32,6 +32,11 @@ second declaration that could drift.
   that a new diagnostic is not a breaking change — what is promised is that a
   correct program keeps compiling, not that it compiles without warnings.
 
+- **A `scan_constructs.py` budget of 0 for C string, memory and stdio calls.**
+  It counts `memcpy`, `memmove`, `memcmp`, `memset`, the `str*` family, the
+  `printf` and `scanf` families, `atoi` and `#include <cstring>` in
+  `include/mqtt/` and `src/`. `docs/misra.md` lists it with the other budgets.
+
 ### Changed
 
 - **Eighteen call sites in the tests that dropped one of those returns.** Twelve
@@ -45,6 +50,16 @@ second declaration that could drift.
   `return` and would leave the allocation probe armed for every later test. No defect was found
   behind any of them — each was already guarded indirectly, in that a failed
   call would have failed a later assertion.
+
+- **No C library memory calls in the library.** CodeSonar reports these calls
+  as banned functions. The four — `memcpy` in `Client::enqueue`, `memmove` in
+  `Client::drain_rx` and `TxQueue::compact`, `memcmp` in
+  `Client::find_subscription` — are `etl::copy` and `etl::equal`. Both shifts
+  move bytes down, so a forward copy is correct on the overlapping range; a
+  comment at each site says why. No library header includes `<cstring>`.
+  `etl::mem_copy` and its relatives are not used: they call `memcpy` inside the
+  ETL header. `sizeof(Client<Cfg>)` is unchanged: 1256, 4552 and 21080 bytes for
+  the small, default and large test configurations.
 
 ## [1.0.0] — 2026-09-04
 

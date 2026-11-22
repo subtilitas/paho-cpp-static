@@ -4,17 +4,17 @@
 //
 // Deliberately linear rather than circular: the transport wants one contiguous
 // span per send() call, and a circular buffer would either hand out two spans
-// or force packets to straddle the wrap point. Compaction is a memmove of at
-// most the unsent bytes, which in steady state is zero because the queue drains
-// to empty and resets its indices.
+// or force packets to straddle the wrap point. Compaction is a downward copy of
+// at most the unsent bytes, which in steady state is zero because the queue
+// drains to empty and resets its indices.
 
 #ifndef MQTT_TX_QUEUE_HPP
 #define MQTT_TX_QUEUE_HPP
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
+#include <etl/algorithm.h>
 #include <etl/span.h>
 
 namespace mqtt {
@@ -88,9 +88,14 @@ private:
         if (head_ == 0)
             return;
 
+        // The ranges overlap when n > head_. The destination starts before
+        // the source, so a forward copy reads each byte before it is
+        // overwritten. etl::copy is forward: an element loop under C++17,
+        // std::copy under C++20, which allows this overlap because the
+        // destination does not start inside the source range.
         const size_t n = tail_ - head_;
         if (n > 0)
-            std::memmove(buffer_, buffer_ + head_, n);
+            (void)etl::copy(buffer_ + head_, buffer_ + tail_, buffer_);
 
         head_ = 0;
         tail_ = n;

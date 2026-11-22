@@ -290,7 +290,7 @@ allocate, so a `Client` can live in `.bss` on a target with no heap linked.
 <!-- coverage:start -->
 | Metric | Covered | Total | Measured |
 |---|---|---|---|
-| Lines | 1224 | 1295 | 94.5% |
+| Lines | 1225 | 1296 | 94.5% |
 | Branches | 852 | 961 | 88.7% |
 | Functions | 623 | 823 | 75.7% |
 <!-- coverage:end -->

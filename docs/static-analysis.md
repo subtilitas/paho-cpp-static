@@ -83,8 +83,13 @@ finding is a regression in the change that introduced it.
 
 **Declined, and silenced in `.clang-tidy` with the reasoning recorded**
 
-- `readability-use-anyofallof` ×2 — would pull `<algorithm>` into a library
-  that deliberately includes it nowhere, to replace two four-line loops.
+- `readability-use-anyofallof` ×2 — would replace two four-line loops with
+  `std::any_of`. The library calls no `std::` algorithm; where it needs one it
+  calls ETL's. No library header includes `<algorithm>` itself, but it arrives
+  transitively: `etl/algorithm.h` includes it whenever `ETL_USING_STL` is set,
+  which is ETL's default, and `etl/vector.h`, `etl/string_view.h`,
+  `etl/span.h`, `etl/array.h` and `etl/byte_stream.h` all include
+  `etl/algorithm.h`.
 - `readability-avoid-nested-conditional-operator` ×2 — `vbi_size_c` must stay a
   single expression to be usable in a constant expression under C++17.
 - `cppcoreguidelines-missing-std-forward` — `enqueue_sized` invokes its

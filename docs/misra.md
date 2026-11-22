@@ -80,6 +80,7 @@ tools/scan_constructs.py --check    # fail if a budget is exceeded
 | `alloca` / VLA | 0 | unbounded stack. The cross-compile job independently fails on a dynamically sized frame |
 | `float` / `double` | 0 | no floating point anywhere, so the archive links against either float ABI |
 | `<cstdio>` / `<iostream>` | 0 | no I/O in a library that does not own the transport |
+| C string, memory and stdio calls, `<cstring>` | 0 | `memcpy`, `memmove`, `memcmp`, `memset`, the `str*` family, the `printf` and `scanf` families, `atoi`. A length in bytes is a bound the compiler cannot check. `etl::copy`, `etl::equal` and `etl::fill` take the range instead |
 | multiple inheritance | 0 | one abstract interface per type |
 | function-like macros | **1** | deviation — see below |
 

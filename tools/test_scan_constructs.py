@@ -93,6 +93,21 @@ class Budgets(unittest.TestCase):
         self.assertIsNone(re.search(pattern, "Client(const Client&) = delete;"))
         self.assertIsNotNone(re.search(pattern, "char* p = new char[4];"))
 
+    def test_c_string_calls_match_and_etl_calls_do_not(self):
+        pattern = next(p for label, p, _b, _w in scan.RULES
+                       if label == "C string/memory/stdio")
+        for hit in ("std::memcpy(dst, src, n);", "::memmove(a, b, n);",
+                    "if (memcmp(a, b, n) == 0)", "snprintf(buf, 8, fmt);",
+                    "std::strlen(p)", "std::fprintf(stderr, fmt);", "atoi(s)",
+                    "std::strtol(s, &end, 10)", "#include <cstring>"):
+            with self.subTest(hit=hit):
+                self.assertIsNotNone(re.search(pattern, hit))
+        for miss in ("etl::copy(a, a + n, b);", "etl::strlen(p, 8)",
+                     "os.write(p, n);", "q->fill(0);", "my_memcpy(a, b, n);",
+                     "etl::equal(a, a + n, b)", "string_view(text)"):
+            with self.subTest(miss=miss):
+                self.assertIsNone(re.search(pattern, miss))
+
 
 class Cli(unittest.TestCase):
     def test_check_exits_zero_on_a_clean_tree(self):

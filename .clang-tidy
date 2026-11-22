@@ -111,9 +111,10 @@ Checks: >
 #       a constexpr function body cannot hold statements as freely.
 #
 #   readability-use-anyofallof
-#       Suggests std::all_of for two four-line loops. This library keeps its
-#       standard-library surface deliberately small -- <algorithm> is not
-#       currently included anywhere -- and the loops read fine.
+#       Suggests std::all_of for two four-line loops. The library calls no
+#       std:: algorithm; it uses ETL's (etl::copy, etl::equal). No library
+#       header includes <algorithm> itself. It arrives through etl/algorithm.h
+#       when ETL_USING_STL is set, ETL's default. The loops read fine.
 
 WarningsAsErrors: ''
 HeaderFilterRegex: 'include/mqtt/.*\.hpp$'

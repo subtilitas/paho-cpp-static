@@ -38,8 +38,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
+#include <etl/algorithm.h>
 #include <etl/array.h>
 #include <etl/delegate.h>
 #include <etl/span.h>
@@ -873,7 +873,7 @@ private:
             return Error::TxQueueFull;
 
         etl::span<uint8_t> dst = tx_.write_span();
-        std::memcpy(dst.data(), bytes.data(), bytes.size());
+        (void)etl::copy(bytes.begin(), bytes.end(), dst.begin());
         tx_.commit(bytes.size());
         return Error::Ok;
     }
@@ -1013,8 +1013,8 @@ private:
             // rx_len_ to zero, and a reentrant step() drains the buffer itself.
             //
             // p.total_bytes was measured before that happened, so the
-            // subtraction below would wrap -- it is size_t -- and hand memmove
-            // a length near SIZE_MAX.
+            // subtraction below would wrap -- it is size_t -- and hand the
+            // shift a length near SIZE_MAX.
             //
             // Detect it by the only thing that can be true afterwards, and stop
             // rather than clamp: the bytes still held belong to a session that
@@ -1028,9 +1028,19 @@ private:
 
             // Shift the remainder down before reacting to any error, so the
             // buffer is always in a consistent state.
+            //
+            // The ranges overlap when leftover > p.total_bytes. The
+            // destination starts before the source, so a forward copy reads
+            // each byte before it is overwritten. etl::copy is forward: an
+            // element loop under C++17, std::copy under C++20, which allows
+            // this overlap because the destination does not start inside the
+            // source range.
             const size_t leftover = rx_len_ - p.total_bytes;
             if (leftover > 0)
-                std::memmove(rx_.data(), rx_.data() + p.total_bytes, leftover);
+            {
+                uint8_t* const src = rx_.data() + p.total_bytes;
+                (void)etl::copy(src, src + leftover, rx_.data());
+            }
             rx_len_ = leftover;
 
             if (e != Error::Ok)
@@ -1556,7 +1566,7 @@ private:
         for (Subscription& s : subscriptions_)
         {
             if (s.filter.size() == filter.size() &&
-                std::memcmp(s.filter.data(), filter.data(), filter.size()) == 0)
+                etl::equal(filter.begin(), filter.end(), s.filter.begin()))
                 return &s;
         }
         return nullptr;
