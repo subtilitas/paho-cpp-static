@@ -75,7 +75,7 @@ static constexpr size_t   kMaxVbiBytes         = 4;
 ///
 /// Unlike Paho's bitfield union, this carries no endianness assumptions and no
 /// implementation-defined bitfield layout, so it behaves identically on every
-/// target and is safe to memcpy or store.
+/// target and is trivially copyable.
 struct FixedHeader
 {
     PacketType type             = PacketType::Reserved;

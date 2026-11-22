@@ -170,7 +170,7 @@ much it has queued.
 ## Buffers
 
 **Receive** is a single linear buffer. Bytes accumulate at the tail, complete
-packets are parsed in place, and the remainder is `memmove`d down. Parsing in
+packets are parsed in place, and the remainder is copied down with `etl::copy`. Parsing in
 place is what lets `Message` be a view. A packet larger than the buffer is
 `Error::PacketTooLarge` rather than a silent truncation — see
 [Configuration](Configuration) for sizing.

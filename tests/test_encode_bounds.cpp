@@ -19,7 +19,7 @@
 
 #include "test_harness.hpp"
 
-#include <cstring>
+#include <etl/algorithm.h>
 
 #include "mqtt/codec.hpp"
 
@@ -46,14 +46,15 @@ void sweep(const char* name, EncodeFn&& encode) noexcept
     const Result<size_t> full = encode(etl::span<uint8_t>(reference, sizeof(reference)));
     if (!CHECK(full.ok()))
     {
-        std::printf("    %s: could not encode even into %zu bytes\n", name, kMaxProbe);
+        std::cout << "    " << name << ": could not encode even into " << kMaxProbe
+                  << " bytes\n";
         return;
     }
 
     for (size_t size = 0; size <= kMaxProbe; ++size)
     {
         uint8_t arena[kGuardLen + kMaxProbe + kGuardLen];
-        std::memset(arena, kGuard, sizeof(arena));
+        etl::fill(arena, arena + sizeof(arena), kGuard);
         uint8_t* buf = arena + kGuardLen;
 
         const Result<size_t> r = encode(etl::span<uint8_t>(buf, size));
@@ -64,7 +65,7 @@ void sweep(const char* name, EncodeFn&& encode) noexcept
             if (arena[i] != kGuard || arena[kGuardLen + kMaxProbe + i] != kGuard)
             {
                 th::report_failure("encoder wrote outside its buffer", __FILE__, __LINE__);
-                std::printf("    %s at size %zu\n", name, size);
+                std::cout << "    " << name << " at size " << size << '\n';
                 return;
             }
         }
@@ -75,7 +76,7 @@ void sweep(const char* name, EncodeFn&& encode) noexcept
             {
                 th::report_failure("encoder wrote past the size it was given", __FILE__,
                                    __LINE__);
-                std::printf("    %s at size %zu, byte %zu\n", name, size, i);
+                std::cout << "    " << name << " at size " << size << ", byte " << i << '\n';
                 return;
             }
         }
@@ -86,21 +87,23 @@ void sweep(const char* name, EncodeFn&& encode) noexcept
             {
                 th::report_failure("encoder reported more bytes than the buffer held", __FILE__,
                                    __LINE__);
-                std::printf("    %s at size %zu reported %zu\n", name, size, r.value());
+                std::cout << "    " << name << " at size " << size << " reported " << r.value()
+                          << '\n';
                 return;
             }
-            if (r.value() != full.value() || std::memcmp(buf, reference, r.value()) != 0)
+            if (r.value() != full.value() || !etl::equal(buf, buf + r.value(), reference))
             {
                 th::report_failure("a smaller buffer produced different bytes", __FILE__,
                                    __LINE__);
-                std::printf("    %s at size %zu\n", name, size);
+                std::cout << "    " << name << " at size " << size << '\n';
                 return;
             }
         }
         else if (!bounded_buffer_error(r.error()))
         {
             th::report_failure("unexpected error from a short buffer", __FILE__, __LINE__);
-            std::printf("    %s at size %zu: %s\n", name, size, to_string(r.error()));
+            std::cout << "    " << name << " at size " << size << ": " << to_string(r.error())
+                      << '\n';
             return;
         }
     }
@@ -200,7 +203,7 @@ TEST(encoders_handle_a_two_byte_remaining_length_at_every_size)
     for (size_t size = 0; size <= 210; ++size)
     {
         uint8_t arena[8 + 210 + 8];
-        std::memset(arena, kGuard, sizeof(arena));
+        etl::fill(arena, arena + sizeof(arena), kGuard);
         uint8_t* buf = arena + 8;
 
         const Result<size_t> r =
@@ -214,7 +217,7 @@ TEST(encoders_handle_a_two_byte_remaining_length_at_every_size)
             {
                 th::report_failure("wrote past the buffer with a 2-byte length", __FILE__,
                                    __LINE__);
-                std::printf("    size %zu, byte %zu\n", size, i);
+                std::cout << "    size " << size << ", byte " << i << '\n';
                 return;
             }
         }

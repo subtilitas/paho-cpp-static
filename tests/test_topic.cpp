@@ -1,7 +1,5 @@
 #include "test_harness.hpp"
 
-#include <cstdio>
-
 #include <etl/string.h>
 #include <etl/vector.h>
 
@@ -244,11 +242,11 @@ TEST(topic_matches_agrees_with_a_reference_over_every_short_pair)
                 {
                     th::report_failure("topic_matches disagrees with the reference", __FILE__,
                                        __LINE__);
-                    std::printf("    filter=\"%.*s\" topic=\"%.*s\" got=%d want=%d\n",
-                                static_cast<int>(f.size()), f.data(),
-                                static_cast<int>(t.size()), t.data(),
-                                static_cast<int>(topic_matches(fv, tv)),
-                                static_cast<int>(reference_matches(fv, tv)));
+                    std::cout << "    filter=\"" << th::View{fv} << "\" topic=\""
+                              << th::View{tv}
+                              << "\" got=" << static_cast<int>(topic_matches(fv, tv))
+                              << " want=" << static_cast<int>(reference_matches(fv, tv))
+                              << '\n';
                 }
                 ++mismatches;
             }

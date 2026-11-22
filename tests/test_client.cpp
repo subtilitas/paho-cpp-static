@@ -393,13 +393,15 @@ TEST(client_delivers_qos0_message)
     Fixture f;
     REQUIRE(f.bring_up());
 
-    int  count            = 0;
-    char topic_seen[32]   = {};
-    char payload_seen[32] = {};
-    auto on_msg           = [&](const Message& m) {
+    int             count = 0;
+    etl::string<32> topic_seen;
+    etl::string<32> payload_seen;
+    auto            on_msg = [&](const Message& m) {
         ++count;
-        std::memcpy(topic_seen, m.topic.data(), m.topic.size());
-        std::memcpy(payload_seen, m.payload.data(), m.payload.size());
+        topic_seen.assign(m.topic.begin(), m.topic.end());
+        payload_seen.clear();
+        for (const uint8_t b : m.payload)
+            payload_seen.push_back(static_cast<char>(b));
     };
     f.client.on_message(on_msg);
 
@@ -407,8 +409,8 @@ TEST(client_delivers_qos0_message)
     f.client.step();
 
     CHECK_EQ(count, 1);
-    CHECK(std::strcmp(topic_seen, "sensors/temp") == 0);
-    CHECK(std::strcmp(payload_seen, "21.5") == 0);
+    CHECK(etl::string_view(topic_seen) == etl::string_view("sensors/temp"));
+    CHECK(etl::string_view(payload_seen) == etl::string_view("21.5"));
 }
 
 TEST(client_acks_inbound_qos1)

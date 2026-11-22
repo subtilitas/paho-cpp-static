@@ -83,12 +83,63 @@ finding is a regression in the change that introduced it.
 
 **Declined, and silenced in `.clang-tidy` with the reasoning recorded**
 
-- `readability-use-anyofallof` ×2 — would pull `<algorithm>` into a library
-  that deliberately includes it nowhere, to replace two four-line loops.
+- `readability-use-anyofallof` ×2 — would replace two four-line loops with
+  `std::any_of`. The library calls no `std::` algorithm; where it needs one it
+  calls ETL's. No library header includes `<algorithm>` itself, but it arrives
+  transitively: `etl/algorithm.h` includes it whenever `ETL_USING_STL` is set,
+  which is ETL's default, and `etl/vector.h`, `etl/string_view.h`,
+  `etl/span.h`, `etl/array.h` and `etl/byte_stream.h` all include
+  `etl/algorithm.h`.
 - `readability-avoid-nested-conditional-operator` ×2 — `vbi_size_c` must stay a
   single expression to be usable in a constant expression under C++17.
 - `cppcoreguidelines-missing-std-forward` — `enqueue_sized` invokes its
   callable once, in place; forwarding would change nothing.
+
+---
+
+## C library string, memory and stdio calls
+
+CodeSonar reports calls into the C library's string, memory and formatted I/O
+functions: a length in bytes is a bound it cannot tie to the buffer. The tree
+makes none, in the library, the tests, the fuzz harnesses, the interop broker
+or the examples. The evidence is `tools/scan_constructs.py --check` for
+`include/mqtt/` and `src/`, and a grep of the whole tree. No CodeSonar run has
+confirmed it.
+
+| C library call | Replacement | Where |
+|---|---|---|
+| `memcpy` | `etl::copy` | `Client::enqueue`, test helpers |
+| `memmove` | `etl::copy` | `Client::drain_rx`, `TxQueue::compact` |
+| `memcmp` | `etl::equal` | `Client::find_subscription`, test byte comparisons |
+| `memset` | `etl::fill` | guard bytes in `test_encode_bounds.cpp` |
+| `strlen`, `strcmp` | `etl::string_view` comparison | tests |
+| `atoi`, `strtol` | `etl::to_arithmetic<uint32_t>`, then a 1–65535 range check | examples, interop broker |
+| `snprintf` | `etl::string<N>` with `etl::to_string` | examples; the string's `size()` is the payload length |
+| `printf`, `fprintf`, `fflush` | `std::cout`, `std::cerr` | examples, tests, interop broker |
+
+Both `memmove` sites shift bytes down: the destination starts before the
+source. A forward copy reads each byte before it overwrites it, so `etl::copy`
+is correct on the overlap. Under C++17 it is an element loop; under C++20 with
+the STL it is `std::copy`, which permits this overlap because the destination
+does not start inside the source range. A comment at each site says so.
+
+`etl::mem_copy`, `etl::mem_move`, `etl::mem_compare` and `etl::mem_set` are not
+used. They call `memcpy` and its relatives inside the ETL header, so the call
+is still there for an analyser to find.
+
+`tools/scan_constructs.py` holds the library to this with a budget of 0 for the
+calls and for `<cstring>`; see [misra.md](misra.md). The scan covers
+`include/mqtt/` and `src/` only. Tests and examples are outside it.
+
+Left in place, each for a stated reason:
+
+- `std::malloc`, `std::free` and `std::abort` in `tests/test_no_alloc.cpp`. They
+  back the replaced global `operator new`. It cannot call `operator new`, and
+  under `-fno-exceptions` it cannot throw `std::bad_alloc`.
+- `std::signal` in `tests/interop/minimosq_broker.cpp`, to stop the broker on
+  `SIGTERM` and ignore `SIGPIPE`. POSIX has no C++ equivalent.
+- `errno`, `getaddrinfo` and the socket calls in the example transports. They
+  are the OS interface the transports adapt.
 
 ---
 

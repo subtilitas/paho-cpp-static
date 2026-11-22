@@ -50,22 +50,23 @@ int run_all() noexcept
         const int before = failures();
         current_test()   = registry()[i].name;
 
-        std::printf("[ RUN  ] %s\n", registry()[i].name);
+        std::cout << "[ RUN  ] " << registry()[i].name << '\n';
         registry()[i].fn();
 
         if (failures() > before)
         {
             ++failed_tests;
-            std::printf("[ FAIL ] %s\n", registry()[i].name);
+            std::cout << "[ FAIL ] " << registry()[i].name << '\n';
         }
         else
         {
-            std::printf("[  OK  ] %s\n", registry()[i].name);
+            std::cout << "[  OK  ] " << registry()[i].name << '\n';
         }
     }
 
-    std::printf("\n%zu tests, %d checks, %d failed checks in %d tests\n", test_count(),
-                checks(), failures(), failed_tests);
+    std::cout << '\n'
+              << test_count() << " tests, " << checks() << " checks, " << failures()
+              << " failed checks in " << failed_tests << " tests\n";
 
     return (failed_tests == 0) ? 0 : 1;
 }

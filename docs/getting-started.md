@@ -78,6 +78,12 @@ project's CI does on every pull request and merge.
 `ip_publisher` is the one to start from for embedded work — see
 [Porting](Porting) for why the resolver is worth losing.
 
+Each takes a host or address, then a port, then a topic; `minimal_publisher`
+takes no topic. The port is decimal digits from 1 to 65535. Anything else —
+`70000`, `0`, `1883x`, `-1` — prints an error and exits with status 2. A topic
+longer than the example's `max_topic_len` (64 bytes in `ip_publisher`, 96 in
+`pubsub_demo`) exits the same way.
+
 ## Your first program
 
 Four things: a config, a transport, a clock, and a loop.

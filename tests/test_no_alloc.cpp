@@ -205,8 +205,8 @@ TEST(zero_allocations_during_a_full_session)
 
     if (alloc_probe::new_calls != 0)
     {
-        std::printf("    %zu allocations totalling %zu bytes\n", alloc_probe::new_calls,
-                    alloc_probe::new_bytes);
+        std::cout << "    " << alloc_probe::new_calls << " allocations totalling "
+                  << alloc_probe::new_bytes << " bytes\n";
     }
     CHECK_EQ(alloc_probe::new_calls, size_t{0});
     CHECK_EQ(alloc_probe::new_bytes, size_t{0});
@@ -275,14 +275,38 @@ TEST(zero_allocations_under_error_and_exhaustion_paths)
     CHECK_EQ(alloc_probe::new_calls, size_t{0});
 }
 
+TEST(harness_output_does_not_allocate)
+{
+    // The harness reports a failed CHECK through std::cout. A CHECK can fail
+    // while the probe is armed, so the report must not add allocations of its
+    // own to the count. Every kind of output the harness and these tests
+    // produce goes through the stream here once, armed: text, integers of
+    // each width, a hex dump with its manipulators, and a length-delimited
+    // view.
+    const uint8_t bytes[] = {0x00, 0x0A, 0xA5, 0xFF};
+
+    alloc_probe::reset();
+    alloc_probe::armed = true;
+
+    std::cout << "    stream output while armed: " << size_t{4552} << ' ' << -1 << ' '
+              << static_cast<long long>(-21) << ' ' << 7u << " [";
+    th::print_hex(std::cout, bytes, sizeof(bytes));
+    std::cout << "] " << th::View{etl::string_view("topic/x", 5)} << '\n';
+
+    alloc_probe::armed = false;
+
+    CHECK_EQ(alloc_probe::new_calls, size_t{0});
+}
+
 TEST(client_footprint_is_a_pure_function_of_config)
 {
     // Not an assertion about a specific number -- just a demonstration that the
     // whole cost is visible and scales with the config, with nothing hidden
     // behind a pointer.
-    std::printf("    sizeof(Client<Small>)   = %zu bytes\n", sizeof(Client<SmallConfig>));
-    std::printf("    sizeof(Client<Default>) = %zu bytes\n", sizeof(Client<DefaultConfig>));
-    std::printf("    sizeof(Client<Large>)   = %zu bytes\n", sizeof(Client<LargeConfig>));
+    std::cout << "    sizeof(Client<Small>)   = " << sizeof(Client<SmallConfig>) << " bytes\n";
+    std::cout << "    sizeof(Client<Default>) = " << sizeof(Client<DefaultConfig>)
+              << " bytes\n";
+    std::cout << "    sizeof(Client<Large>)   = " << sizeof(Client<LargeConfig>) << " bytes\n";
 
     CHECK(sizeof(Client<SmallConfig>) < sizeof(Client<DefaultConfig>));
     CHECK(sizeof(Client<DefaultConfig>) < sizeof(Client<LargeConfig>));

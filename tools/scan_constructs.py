@@ -92,6 +92,14 @@ RULES: list[tuple[str, str, int, str]] = [
      "no FP anywhere, so the archive links against any float ABI"),
     ("<cstdio> / <iostream>", r"#\s*include\s*<(cstdio|iostream|stdio\.h)>", 0,
      "no I/O in a library that does not own the transport"),
+    # The C library's string, memory, formatting and stdio calls: what a
+    # CodeSonar run reports. etl::copy, etl::equal and etl::fill replace them.
+    # The lookbehind skips etl::strlen and members such as os.write.
+    ("C string/memory/stdio", r"#\s*include\s*<(cstring|string\.h)>"
+     r"|(?<![\w.>:])(?:std::|::)?(?:mem(?:cpy|move|cmp|set)"
+     r"|str(?:len|n?cmp|n?cpy|n?cat|r?chr|str|tok|to[lu]?l*)"
+     r"|v?[fs]?n?printf|f?puts|putchar|fwrite|fflush|v?[fs]?scanf|ato[il]l?)\s*\(", 0,
+     "bounds the compiler cannot see; ETL algorithms instead. See docs/misra.md"),
     ("multiple inheritance", r"class\s+\w+\s*:\s*[^{;]*,[^{;]*\bpublic\b", 0,
      "one abstract interface per type"),
     ("function-like macro", r"^\s*#\s*define\s+\w+\s*\(", 1,

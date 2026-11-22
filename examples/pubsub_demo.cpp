@@ -7,10 +7,13 @@
 //
 // The whole client lives in .bss here, exactly as it would on a target.
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <iomanip>
+#include <iostream>
 
+#include <etl/string.h>
+#include <etl/to_string.h>
+
+#include "cli.hpp"
 #include "mqtt/client.hpp"
 #include "posix_transport.hpp"
 
@@ -28,9 +31,9 @@ struct DemoConfig : mqtt::DefaultConfig
 };
 
 // Statically allocated, like it would be on the target.
-example::PosixClock g_clock;
-char                g_topic[128] = "demo/mqtt-embedded";
-volatile bool       g_running    = true;
+example::PosixClock                    g_clock;
+etl::string<DemoConfig::max_topic_len> g_topic("demo/mqtt-embedded");
+volatile bool                          g_running = true;
 
 /// Upper bound on the whole session. Generous next to the ~16s a healthy run
 /// takes, tight enough that a wedged broker fails the job in a minute rather
@@ -46,18 +49,19 @@ int         g_deliveries = 0;   ///< QoS 1/2 handshakes the client completed
 bool        g_connected  = false;
 mqtt::Error g_end_reason = mqtt::Error::Ok;
 
-void print_message(const mqtt::Message& m) noexcept
+void print_message(const mqtt::Message& m)
 {
-    std::printf("  <- [%.*s] qos%d%s %.*s\n", static_cast<int>(m.topic.size()), m.topic.data(),
-                static_cast<int>(m.qos), m.retain ? " (retained)" : "",
-                static_cast<int>(m.payload.size()),
-                reinterpret_cast<const char*>(m.payload.data()));
+    const etl::string_view payload(reinterpret_cast<const char*>(m.payload.data()),
+                                   m.payload.size());
+    std::cout << "  <- [" << example::Text{m.topic} << "] qos" << static_cast<int>(m.qos)
+              << (m.retain ? " (retained)" : "") << ' ' << example::Text{payload} << '\n';
 }
 
 /// Report one expectation. Returns 0 when met, 1 when not, so main can sum.
-int expect(bool ok, const char* what) noexcept
+int expect(bool ok, const char* what)
 {
-    std::printf("  %-4s %s\n", ok ? "ok" : "FAIL", what);
+    std::cout << "  " << std::left << std::setw(4) << (ok ? "ok" : "FAIL") << std::right << ' '
+              << what << '\n';
     return ok ? 0 : 1;
 }
 
@@ -65,23 +69,39 @@ int expect(bool ok, const char* what) noexcept
 
 int main(int argc, char** argv)
 {
-    const char*    host = (argc > 1) ? argv[1] : "test.mosquitto.org";
-    const uint16_t port = static_cast<uint16_t>((argc > 2) ? std::atoi(argv[2]) : 1883);
+    const char* host = (argc > 1) ? argv[1] : "test.mosquitto.org";
+    uint16_t    port = 1883;
+    if ((argc > 2) && !example::parse_port(argv[2], port))
+    {
+        std::cerr << "'" << argv[2] << "' is not a port number from 1 to 65535\n";
+        return 2;
+    }
+
     if (argc > 3)
-        std::snprintf(g_topic, sizeof(g_topic), "%s", argv[3]);
+    {
+        const etl::string_view topic(argv[3]);
+        if (topic.size() > g_topic.max_size())
+        {
+            std::cerr << "topic is " << topic.size() << " bytes; the limit is "
+                      << g_topic.max_size() << '\n';
+            return 2;
+        }
+        g_topic.assign(topic.begin(), topic.end());
+    }
 
     static example::PosixTransport  transport(host, port);
     static mqtt::Client<DemoConfig> client{transport, g_clock};
 
-    std::printf("mqtt-embedded demo -> %s:%u, topic '%s'\n", host, port, g_topic);
-    std::printf("client footprint: %zu bytes\n\n", sizeof(client));
+    std::cout << "mqtt-embedded demo -> " << host << ':' << port << ", topic '"
+              << example::Text{g_topic} << "'\n";
+    std::cout << "client footprint: " << sizeof(client) << " bytes\n\n";
 
     auto on_connect = [](const mqtt::ConnackInfo& info) {
-        std::printf("connected (session_present=%d)\n", info.session_present ? 1 : 0);
+        std::cout << "connected (session_present=" << (info.session_present ? 1 : 0) << ")\n";
         g_connected = true;
     };
     auto on_disconnect = [](mqtt::Error e) {
-        std::printf("disconnected: %s\n", mqtt::to_string(e));
+        std::cout << "disconnected: " << mqtt::to_string(e) << '\n';
         g_end_reason = e;
         g_running    = false;
     };
@@ -90,7 +110,7 @@ int main(int argc, char** argv)
         ++g_echoes;
     };
     auto on_delivery = [](uint16_t id) {
-        std::printf("  delivery complete, id %u\n", id);
+        std::cout << "  delivery complete, id " << id << '\n';
         ++g_deliveries;
     };
 
@@ -109,7 +129,7 @@ int main(int argc, char** argv)
 
     if (client.connect(opts) != mqtt::Error::Ok)
     {
-        std::printf("connect() rejected the options\n");
+        std::cerr << "connect() rejected the options\n";
         return 1;
     }
 
@@ -132,9 +152,10 @@ int main(int argc, char** argv)
     {
         if (mqtt::elapsed_ms(g_clock.now_ms(), started_ms) > kSessionDeadlineMs)
         {
-            std::printf("\ntimed out after %us: connected=%d subscribed=%d published=%d\n",
-                        kSessionDeadlineMs / 1000u, g_connected ? 1 : 0, subscribed ? 1 : 0,
-                        published);
+            std::cout << "\ntimed out after " << (kSessionDeadlineMs / 1000u)
+                      << "s: connected=" << (g_connected ? 1 : 0)
+                      << " subscribed=" << (subscribed ? 1 : 0) << " published=" << published
+                      << '\n';
             timed_out = true;
             break;
         }
@@ -145,11 +166,11 @@ int main(int argc, char** argv)
 
         if (client.is_connected() && !subscribed)
         {
-            const mqtt::Error e =
-                client.subscribe(etl::string_view(g_topic), mqtt::QoS::AtLeastOnce);
+            const mqtt::Error e = client.subscribe(
+                etl::string_view(g_topic.data(), g_topic.size()), mqtt::QoS::AtLeastOnce);
             if (e == mqtt::Error::Ok)
             {
-                std::printf("subscribed to '%s'\n", g_topic);
+                std::cout << "subscribed to '" << example::Text{g_topic} << "'\n";
                 subscribed = true;
             }
         }
@@ -159,20 +180,22 @@ int main(int argc, char** argv)
         if (client.is_connected() && subscribed &&
             mqtt::elapsed_ms(g_clock.now_ms(), last_pub) >= 1000)
         {
-            char      payload[64];
-            const int len = std::snprintf(payload, sizeof(payload),
-                                          "hello #%d from mqtt-embedded", published);
+            // "hello #", at most 11 characters of an int, " from mqtt-embedded".
+            etl::string<40> payload("hello #");
+            (void)etl::to_string(published, payload, true);
+            payload.append(" from mqtt-embedded");
 
             const mqtt::QoS   qos = static_cast<mqtt::QoS>(published % 3);
             const mqtt::Error e   = client.publish(
-                etl::string_view(g_topic),
-                etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload),
-                                           static_cast<size_t>(len)),
+                etl::string_view(g_topic.data(), g_topic.size()),
+                etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload.data()),
+                                           payload.size()),
                 qos);
 
             if (e == mqtt::Error::Ok)
             {
-                std::printf("  -> qos%d %s\n", static_cast<int>(qos), payload);
+                std::cout << "  -> qos" << static_cast<int>(qos) << ' '
+                          << example::Text{payload} << '\n';
                 ++published;
                 deferrals = 0;
                 last_pub  = g_clock.now_ms();
@@ -183,11 +206,12 @@ int main(int argc, char** argv)
                 // persistently is retried at that same level forever. Give up
                 // rather than let the deadline above be the only backstop, and
                 // say which error it was.
-                std::printf("  publish deferred: %s\n", mqtt::to_string(e));
+                std::cout << "  publish deferred: " << mqtt::to_string(e) << '\n';
                 if (++deferrals >= 10)
                 {
-                    std::printf("\ngave up after %d consecutive deferrals at qos%d\n",
-                                deferrals, static_cast<int>(qos));
+                    std::cout << "\ngave up after " << deferrals
+                              << " consecutive deferrals at qos" << static_cast<int>(qos)
+                              << '\n';
                     timed_out = true;
                     break;
                 }
@@ -214,8 +238,8 @@ int main(int argc, char** argv)
     // in its log -- which varies by version and is not ours to depend on.
     const uint32_t idle_ms = (static_cast<uint32_t>(opts.keep_alive_s) * 1000u * 2u);
     if (!timed_out)
-        std::printf("idling %.1fs to exercise keep-alive...\n",
-                    static_cast<double>(idle_ms) / 1000.0);
+        std::cout << "idling " << (idle_ms / 1000u) << '.' << ((idle_ms % 1000u) / 100u)
+                  << "s to exercise keep-alive...\n";
 
     const uint32_t idle_started = g_clock.now_ms();
     while (!timed_out && g_running &&
@@ -235,7 +259,7 @@ int main(int argc, char** argv)
     }
     const bool closed_cleanly = (client.state() == mqtt::State::Idle);
 
-    std::printf("\nresults\n");
+    std::cout << "\nresults\n";
     int failures = 0;
     failures += expect(!timed_out, "session completed without hitting the deadline");
     failures += expect(g_connected, "broker accepted CONNECT");
@@ -249,10 +273,10 @@ int main(int argc, char** argv)
 
     if (failures != 0)
     {
-        std::printf("\n%d check(s) failed\n", failures);
+        std::cout << "\n" << failures << " check(s) failed\n";
         return 1;
     }
 
-    std::printf("\ndone\n");
+    std::cout << "\ndone\n";
     return 0;
 }

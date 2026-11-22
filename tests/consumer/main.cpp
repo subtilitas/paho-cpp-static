@@ -4,7 +4,7 @@
 // ETL include path is what an exported config is most likely to get wrong and
 // nothing in mqtt/client.hpp needs ETL until a template is instantiated.
 
-#include <cstdio>
+#include <iostream>
 
 #include "mqtt/client.hpp"
 
@@ -24,12 +24,13 @@ int main()
     // The pinned Error numbering is part of what the package promises.
     if (static_cast<unsigned>(mqtt::Error::TransportClosed) != 21u)
     {
-        std::printf("FAIL: TransportClosed is %u, expected 21\n",
-                    static_cast<unsigned>(mqtt::Error::TransportClosed));
+        std::cout << "FAIL: TransportClosed is "
+                  << static_cast<unsigned>(mqtt::Error::TransportClosed) << ", expected 21\n";
         return 1;
     }
 
-    std::printf("ok: sizeof(Client<DefaultConfig>) = %zu, TransportClosed = %s\n",
-                sizeof(mqtt::Client<Cfg>), mqtt::to_string(mqtt::Error::TransportClosed));
+    std::cout << "ok: sizeof(Client<DefaultConfig>) = " << sizeof(mqtt::Client<Cfg>)
+              << ", TransportClosed = " << mqtt::to_string(mqtt::Error::TransportClosed)
+              << '\n';
     return 0;
 }
