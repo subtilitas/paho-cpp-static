@@ -13,8 +13,9 @@
 #define MQTT_POSIX_TRANSPORT_HPP
 
 #include <cerrno>
-#include <cstdio>
-#include <cstring>
+
+#include <etl/string.h>
+#include <etl/to_string.h>
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -44,15 +45,16 @@ public:
 
         if (fd_ < 0)
         {
-            char port_text[8];
-            std::snprintf(port_text, sizeof(port_text), "%u", static_cast<unsigned>(port_));
+            // Five digits at most for a uint16_t.
+            etl::string<5> port_text;
+            (void)etl::to_string(port_, port_text);
 
             addrinfo hints{};
             hints.ai_family   = AF_INET;
             hints.ai_socktype = SOCK_STREAM;
 
             addrinfo* res = nullptr;
-            if (::getaddrinfo(host_, port_text, &hints, &res) != 0 || res == nullptr)
+            if (::getaddrinfo(host_, port_text.c_str(), &hints, &res) != 0 || res == nullptr)
                 return mqtt::Error::TransportFailure;
 
             fd_ = ::socket(res->ai_family, res->ai_socktype, res->ai_protocol);
@@ -62,10 +64,18 @@ public:
                 return mqtt::Error::TransportFailure;
             }
 
-            ::fcntl(fd_, F_SETFL, ::fcntl(fd_, F_GETFL, 0) | O_NONBLOCK);
-
-            int one = 1;
-            ::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+            // A blocking socket would stall step() inside connect() and
+            // recv(), and Nagle would hold back small packets. Either failure
+            // fails the connect rather than leaving a socket that misbehaves.
+            const int flags = ::fcntl(fd_, F_GETFL, 0);
+            int       one   = 1;
+            if ((flags < 0) || (::fcntl(fd_, F_SETFL, flags | O_NONBLOCK) < 0) ||
+                (::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) < 0))
+            {
+                ::freeaddrinfo(res);
+                close();
+                return mqtt::Error::TransportFailure;
+            }
 
             const int rc = ::connect(fd_, res->ai_addr, res->ai_addrlen);
             ::freeaddrinfo(res);
@@ -173,7 +183,9 @@ public:
         FD_ZERO(&read_set);
         FD_SET(fd_, &read_set);
         timeval tv{timeout_ms / 1000, (timeout_ms % 1000) * 1000};
-        ::select(fd_ + 1, &read_set, nullptr, nullptr, &tv);
+        // A timeout, a signal and readiness all return to the caller, which
+        // calls step() next whatever happened, so the result is not needed.
+        (void)::select(fd_ + 1, &read_set, nullptr, nullptr, &tv);
     }
 
 private:

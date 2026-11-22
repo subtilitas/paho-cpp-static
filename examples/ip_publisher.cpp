@@ -9,10 +9,12 @@
 // resolver. The address is four octets validated at compile time when it is a
 // literal. This is the arrangement most shipped devices end up with.
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <iostream>
 
+#include <etl/string.h>
+#include <etl/to_string.h>
+
+#include "cli.hpp"
 #include "mqtt/client.hpp"
 
 // The library has no OS dependency, so a port is a transport and a clock and
@@ -48,8 +50,8 @@ static_assert(kDefaultBroker.octets[0] == 127, "broker address failed to parse")
 // And the client's footprint is a compile-time number you can budget against.
 static_assert(sizeof(mqtt::Client<NodeConfig>) < 3072, "MQTT client over budget");
 
-char g_topic[80] = "demo/ip";
-bool g_running   = true;
+etl::string<NodeConfig::max_topic_len> g_topic("demo/ip");
+bool                                   g_running = true;
 
 }   // namespace
 
@@ -58,13 +60,28 @@ int main(int argc, char** argv)
     example::Ipv4 broker = kDefaultBroker;
     if (argc > 1 && !example::parse_ipv4(argv[1], broker))
     {
-        std::printf("'%s' is not a dotted-quad IPv4 address\n", argv[1]);
+        std::cerr << "'" << argv[1] << "' is not a dotted-quad IPv4 address\n";
         return 2;
     }
 
-    const uint16_t port = static_cast<uint16_t>((argc > 2) ? std::atoi(argv[2]) : 1883);
+    uint16_t port = 1883;
+    if ((argc > 2) && !example::parse_port(argv[2], port))
+    {
+        std::cerr << "'" << argv[2] << "' is not a port number from 1 to 65535\n";
+        return 2;
+    }
+
     if (argc > 3)
-        std::snprintf(g_topic, sizeof(g_topic), "%s", argv[3]);
+    {
+        const etl::string_view topic(argv[3]);
+        if (topic.size() > g_topic.max_size())
+        {
+            std::cerr << "topic is " << topic.size() << " bytes; the limit is "
+                      << g_topic.max_size() << '\n';
+            return 2;
+        }
+        g_topic.assign(topic.begin(), topic.end());
+    }
 
 #if defined(_WIN32)
     static example::WinClock         clock;
@@ -75,23 +92,29 @@ int main(int argc, char** argv)
 #endif
     static mqtt::Client<NodeConfig> client{transport, clock};
 
-    std::printf("connecting to %u.%u.%u.%u:%u, topic '%s'\n", broker.octets[0],
-                broker.octets[1], broker.octets[2], broker.octets[3], port, g_topic);
-    std::printf("client footprint: %zu bytes\n\n", sizeof(client));
+    std::cout << "connecting to " << static_cast<unsigned>(broker.octets[0]) << '.'
+              << static_cast<unsigned>(broker.octets[1]) << '.'
+              << static_cast<unsigned>(broker.octets[2]) << '.'
+              << static_cast<unsigned>(broker.octets[3]) << ':' << port << ", topic '"
+              << example::Text{g_topic} << "'\n";
+    std::cout << "client footprint: " << sizeof(client) << " bytes\n\n";
 
     static auto on_connect = [](const mqtt::ConnackInfo& info) {
-        std::printf("connected (session_present=%d)\n", info.session_present ? 1 : 0);
+        std::cout << "connected (session_present=" << (info.session_present ? 1 : 0) << ")\n";
     };
     static auto on_disconnect = [](mqtt::Error e) {
-        std::printf("disconnected: %s\n", mqtt::to_string(e));
+        std::cout << "disconnected: " << mqtt::to_string(e) << '\n';
         g_running = false;
     };
     static auto on_message = [](const mqtt::Message& m) {
-        std::printf("  <- [%.*s] %.*s\n", static_cast<int>(m.topic.size()), m.topic.data(),
-                    static_cast<int>(m.payload.size()),
-                    reinterpret_cast<const char*>(m.payload.data()));
+        const etl::string_view payload(reinterpret_cast<const char*>(m.payload.data()),
+                                       m.payload.size());
+        std::cout << "  <- [" << example::Text{m.topic} << "] " << example::Text{payload}
+                  << '\n';
     };
-    static auto on_delivery = [](uint16_t id) { std::printf("  delivered, id %u\n", id); };
+    static auto on_delivery = [](uint16_t id) {
+        std::cout << "  delivered, id " << id << '\n';
+    };
 
     client.on_connect(on_connect);
     client.on_disconnect(on_disconnect);
@@ -105,7 +128,7 @@ int main(int argc, char** argv)
 
     if (client.connect(opts) != mqtt::Error::Ok)
     {
-        std::printf("connect() rejected the options\n");
+        std::cerr << "connect() rejected the options\n";
         return 1;
     }
 
@@ -119,25 +142,26 @@ int main(int argc, char** argv)
             break;
 
         if (client.is_connected() && !subscribed &&
-            client.subscribe(etl::string_view(g_topic), mqtt::QoS::AtLeastOnce) ==
-                mqtt::Error::Ok)
+            client.subscribe(etl::string_view(g_topic.data(), g_topic.size()),
+                             mqtt::QoS::AtLeastOnce) == mqtt::Error::Ok)
         {
-            std::printf("subscribed to '%s'\n", g_topic);
+            std::cout << "subscribed to '" << example::Text{g_topic} << "'\n";
             subscribed = true;
         }
 
         if (subscribed && mqtt::elapsed_ms(clock.now_ms(), last_pub) >= 1000)
         {
-            char      payload[48];
-            const int len = std::snprintf(payload, sizeof(payload), "reading %d", sent);
+            // "reading " and at most 11 characters of an int.
+            etl::string<24> payload("reading ");
+            (void)etl::to_string(sent, payload, true);
 
             if (client.publish(
-                    etl::string_view(g_topic),
-                    etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload),
-                                             static_cast<size_t>(len)),
+                    etl::string_view(g_topic.data(), g_topic.size()),
+                    etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload.data()),
+                                             payload.size()),
                     mqtt::QoS::AtLeastOnce) == mqtt::Error::Ok)
             {
-                std::printf("  -> %s\n", payload);
+                std::cout << "  -> " << example::Text{payload} << '\n';
                 ++sent;
             }
             last_pub = clock.now_ms();
@@ -156,6 +180,6 @@ int main(int argc, char** argv)
     for (int i = 0; i < 10 && client.state() != mqtt::State::Idle; ++i)
         client.step();
 
-    std::printf("done\n");
+    std::cout << "done\n";
     return 0;
 }

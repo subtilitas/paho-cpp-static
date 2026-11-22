@@ -13,8 +13,6 @@
 
 #include "test_harness.hpp"
 
-#include <cstring>
-
 #include "mqtt/error.hpp"
 
 using namespace mqtt;
@@ -104,8 +102,8 @@ TEST(error_values_are_pinned)
         const Pin& p = kPinned[i];
 
         if (!CHECK(static_cast<uint8_t>(p.code) == p.value))
-            std::printf("    %s is %u, pinned at %u\n", p.name, static_cast<unsigned>(p.code),
-                        static_cast<unsigned>(p.value));
+            std::cout << "    " << p.name << " is " << static_cast<unsigned>(p.code)
+                      << ", pinned at " << static_cast<unsigned>(p.value) << '\n';
     }
 }
 
@@ -117,9 +115,9 @@ TEST(error_names_match_the_pinned_table)
     {
         const Pin& p = kPinned[i];
 
-        if (!CHECK(std::strcmp(to_string(p.code), p.name) == 0))
-            std::printf("    value %u prints as \"%s\", pinned as \"%s\"\n", p.value,
-                        to_string(p.code), p.name);
+        if (!CHECK(th::same_text(to_string(p.code), p.name)))
+            std::cout << "    value " << static_cast<unsigned>(p.value) << " prints as \""
+                      << to_string(p.code) << "\", pinned as \"" << p.name << "\"\n";
     }
 }
 
@@ -129,7 +127,7 @@ TEST(error_table_covers_the_whole_enumeration)
     // row here. to_string() has a case for every real code and returns the
     // fallback otherwise, so the first unnamed value marks the end.
     CHECK(kCount == 23u);
-    CHECK(std::strcmp(to_string(static_cast<Error>(kCount)), "Unknown") == 0);
+    CHECK(th::same_text(to_string(static_cast<Error>(kCount)), "Unknown"));
 
     // is_retryable() is part of the same contract -- it is spelled in terms of
     // two specific codes, so a renumber that slipped past the table would show

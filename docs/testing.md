@@ -18,7 +18,7 @@ against an existing tag.
 
 ## The in-tree suite
 
-174 cases, 1246 checks, in a header-only harness (`tests/test_harness.hpp`) with
+175 cases, 1262 checks, in a header-only harness (`tests/test_harness.hpp`) with
 no external framework. The library is compiled `-fno-exceptions`, so a framework
 that reports failures by throwing would undermine the property under test.
 
@@ -42,6 +42,12 @@ diagnostics, and on in every CI job.
 
 `test_no_alloc.cpp` replaces global `operator new` and fails if it is called
 during construction, a full session, or the error and exhaustion paths.
+
+The harness reports through `std::cout`, and a `CHECK` can fail while the probe
+is armed. `harness_output_does_not_allocate` writes every kind of output the
+harness produces — text, integers, a hex dump with its manipulators, a
+length-delimited view — with the probe armed and asserts zero allocations, so a
+failure report cannot add a second, false failure.
 
 It runs under the sanitizers too. A replaced `operator new` is still the one
 called when ASan is linked, so the assertion holds there rather than passing
@@ -256,7 +262,7 @@ that a known configuration rather than something discovered from a linker map.
 A consumer composing this library with another ETL-based one should check which
 version actually won.
 
-All nine compile under `-Werror` and pass all 174 cases, so the API floor is at
+All nine compile under `-Werror` and pass all 175 cases, so the API floor is at
 or below 20.39.0. The **footprint** floor is higher: `etl::vector` carried 8
 more bytes per instance before 20.40.1, which makes `sizeof(Client<Cfg>)` 56
 bytes larger on 20.39.0 and 20.40.0 — 4608 rather than 4552 at the defaults.

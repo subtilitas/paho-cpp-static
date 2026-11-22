@@ -642,7 +642,7 @@ jobs:
 
       # mqtt_tests is run directly rather than through ctest so its output can
       # be kept for the footprint step below, which would otherwise mean running
-      # the whole 174-case suite a second time per ETL version. pipefail is what
+      # the whole 175-case suite a second time per ETL version. pipefail is what
       # makes the runner's exit code survive the pipe into tee. The remaining
       # ctest cases are the compile-failure ones, which have to go through ctest
       # because the build is the test.

@@ -4,7 +4,8 @@
 #ifndef MQTT_TEST_BROKER_SIM_HPP
 #define MQTT_TEST_BROKER_SIM_HPP
 
-#include <cstring>
+#include <etl/algorithm.h>
+#include <etl/string_view.h>
 
 #include "fakes.hpp"
 #include "mqtt/codec.hpp"
@@ -43,11 +44,13 @@ inline void push_suback(fakes::FakeTransport& t, uint16_t id, const uint8_t* cod
                         size_t count) noexcept
 {
     uint8_t buf[32];
+    if (count > sizeof(buf) - 4u)
+        return;
     buf[0] = 0x90;
     buf[1] = static_cast<uint8_t>(2 + count);
     buf[2] = static_cast<uint8_t>(id >> 8);
     buf[3] = static_cast<uint8_t>(id & 0xFF);
-    std::memcpy(buf + 4, codes, count);
+    (void)etl::copy(codes, codes + count, buf + 4);
     t.push_inbound(buf, 4 + count);
 }
 
@@ -63,12 +66,12 @@ inline void push_publish(fakes::FakeTransport& t, const char* topic, const char*
                          QoS qos = QoS::AtMostOnce, uint16_t id = 0, bool dup = false,
                          bool retain = false) noexcept
 {
-    uint8_t              buf[512]    = {};
-    const size_t         payload_len = std::strlen(payload);
-    const Result<size_t> n           = codec::encode_publish(
+    uint8_t                buf[512] = {};
+    const etl::string_view text(payload);
+    const Result<size_t>   n = codec::encode_publish(
         etl::span<uint8_t>(buf, sizeof(buf)), etl::string_view(topic),
-        etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(payload), payload_len), qos,
-        retain, dup, id);
+        etl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(text.data()), text.size()),
+        qos, retain, dup, id);
     if (n.ok())
         t.push_inbound(buf, n.value());
 }

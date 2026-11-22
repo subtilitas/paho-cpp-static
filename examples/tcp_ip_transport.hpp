@@ -21,7 +21,6 @@
 
 #include <cerrno>
 #include <cstdint>
-#include <cstring>
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -126,7 +125,9 @@ public:
         pollfd pfd{};
         pfd.fd     = fd_;
         pfd.events = POLLIN;
-        ::poll(&pfd, 1, timeout_ms);
+        // A timeout, a signal and readiness all return to the caller, which
+        // calls step() next whatever happened, so the result is not needed.
+        (void)::poll(&pfd, 1, timeout_ms);
     }
 
 private:
@@ -146,7 +147,11 @@ private:
         // MQTT packets are small and latency-sensitive; Nagle would sit on an
         // acknowledgement waiting for more data that is not coming.
         int one = 1;
-        ::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+        if (::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) < 0)
+        {
+            close();
+            return mqtt::Error::TransportFailure;
+        }
 
         // No getaddrinfo, no resolver, no allocation: the address is built by
         // hand from the four octets.

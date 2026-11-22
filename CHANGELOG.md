@@ -37,6 +37,11 @@ second declaration that could drift.
   `printf` and `scanf` families, `atoi` and `#include <cstring>` in
   `include/mqtt/` and `src/`. `docs/misra.md` lists it with the other budgets.
 
+- **`harness_output_does_not_allocate` in `test_no_alloc.cpp`.** The harness
+  reports through `std::cout`, and a `CHECK` can fail while the allocation probe
+  is armed. The case writes text, integers, a hex dump and a view with the probe
+  armed and asserts zero allocations. The suite is 175 cases and 1262 checks.
+
 ### Changed
 
 - **Eighteen call sites in the tests that dropped one of those returns.** Twelve
@@ -60,6 +65,32 @@ second declaration that could drift.
   `etl::mem_copy` and its relatives are not used: they call `memcpy` inside the
   ETL header. `sizeof(Client<Cfg>)` is unchanged: 1256, 4552 and 21080 bytes for
   the small, default and large test configurations.
+
+- **No C library string, memory or stdio calls in the tests, fuzz harnesses,
+  interop broker or examples.** They use `etl::copy`, `etl::equal`, `etl::fill`
+  and `etl::string_view` comparison in place of `memcpy`, `memcmp`, `memset`,
+  `strlen` and `strcmp`, and `std::cout` and `std::cerr` in place of `printf`,
+  `fprintf` and `fflush`. `test_harness.hpp` prints hex dumps with `std::hex`,
+  `std::setw` and `std::setfill` and restores the stream's flags afterwards.
+  `sim::push_suback` returns without pushing when the codes do not fit its
+  32-byte buffer.
+
+- **The examples reject a bad port.** `minimal_publisher`, `pubsub_demo` and
+  `ip_publisher` parse the port with `etl::to_arithmetic` and accept 1 to 65535.
+  Anything else prints an error and exits with status 2. `atoi` maps `70000` to
+  port 4464 and `abc` to port 0. `minimosq_broker` uses the same parse in place
+  of `strtol`. A topic argument longer than the example's `max_topic_len` exits
+  the same way, where `snprintf` truncates it.
+
+- **Example payloads are `etl::string<N>` built with `etl::to_string`.** The
+  string's `size()` is the payload length, in place of an unchecked `snprintf`
+  return value.
+
+- **The POSIX example transports check `fcntl` and `setsockopt`.** In
+  `posix_transport.hpp` a failure to set `O_NONBLOCK` or `TCP_NODELAY` closes the
+  socket and fails the connect with `TransportFailure`; `tcp_ip_transport.hpp`
+  does the same for `TCP_NODELAY`. The `select` and `poll` results in
+  `wait_readable()` are discarded explicitly with `(void)`.
 
 ## [1.0.0] — 2026-09-04
 

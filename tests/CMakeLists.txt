@@ -109,6 +109,9 @@ mqtt_add_compile_case(named_lambda FALSE)
 if(MQTT_MINIMOSQ_DIR AND UNIX)
     add_executable(minimosq_broker interop/minimosq_broker.cpp)
     target_include_directories(minimosq_broker SYSTEM PRIVATE "${MQTT_MINIMOSQ_DIR}/include")
+    # ETL only, for etl::to_arithmetic in the port parse. The broker is not a
+    # client and does not link the library.
+    target_link_libraries(minimosq_broker PRIVATE mqtt_etl)
     target_compile_features(minimosq_broker PRIVATE cxx_std_17)
     set_target_properties(minimosq_broker PROPERTIES CXX_EXTENSIONS OFF)
 endif()

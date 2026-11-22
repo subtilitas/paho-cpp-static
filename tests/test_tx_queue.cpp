@@ -1,12 +1,14 @@
 // TxQueue is a fixed-capacity byte FIFO with hand-rolled index arithmetic and
-// a memmove, driven indirectly by every client test but asserted on by none of
-// them. Compaction in particular only runs when the queue is partially drained
-// and then asked for more room than remains at the tail, which the client
-// reaches rarely and never checks the contents afterwards.
+// an overlapping downward copy, driven indirectly by every client test but
+// asserted on by none of them. Compaction in particular only runs when the
+// queue is partially drained and then asked for more room than remains at the
+// tail, which the client reaches rarely and never checks the contents
+// afterwards.
 
 #include "test_harness.hpp"
 
-#include <cstring>
+#include <etl/algorithm.h>
+#include <etl/string_view.h>
 
 #include "mqtt/tx_queue.hpp"
 
@@ -15,21 +17,19 @@ using namespace mqtt;
 namespace {
 
 /// Append `text` through the reserve/write_span/commit sequence callers use.
-bool push(TxQueue<16>& q, const char* text) noexcept
+bool push(TxQueue<16>& q, etl::string_view text) noexcept
 {
-    const size_t n = std::strlen(text);
-    if (!q.reserve(n))
+    if (!q.reserve(text.size()))
         return false;
-    std::memcpy(q.write_span().data(), text, n);
-    q.commit(n);
+    (void)etl::copy(text.begin(), text.end(), q.write_span().begin());
+    q.commit(text.size());
     return true;
 }
 
-bool peek_equals(const TxQueue<16>& q, const char* text) noexcept
+bool peek_equals(const TxQueue<16>& q, etl::string_view text) noexcept
 {
     const etl::span<const uint8_t> s = q.peek();
-    const size_t                   n = std::strlen(text);
-    return s.size() == n && std::memcmp(s.data(), text, n) == 0;
+    return s.size() == text.size() && etl::equal(text.begin(), text.end(), s.begin());
 }
 
 }   // namespace
@@ -131,7 +131,8 @@ TEST(tx_queue_clamps_oversized_commit_and_consume)
 {
     TxQueue<16> q;
     CHECK(q.reserve(4));
-    std::memcpy(q.write_span().data(), "abcd", 4);
+    const etl::string_view abcd("abcd");
+    (void)etl::copy(abcd.begin(), abcd.end(), q.write_span().begin());
 
     // Committing more than the buffer holds must saturate, not run past it.
     q.commit(999);

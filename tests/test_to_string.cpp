@@ -8,8 +8,6 @@
 
 #include "test_harness.hpp"
 
-#include <cstring>
-
 #include "mqtt/client.hpp"
 #include "mqtt/packet.hpp"
 
@@ -31,19 +29,20 @@ void check_names(Fn to_name, unsigned count, const char* fallback) noexcept
         if (!CHECK(name != nullptr) || !CHECK(name[0] != '\0'))
             continue;
 
-        if (std::strcmp(name, fallback) == 0)
+        if (th::same_text(name, fallback))
         {
             th::report_failure("enumerator has no case of its own", __FILE__, __LINE__);
-            std::printf("    value %u fell through to \"%s\"\n", i, fallback);
+            std::cout << "    value " << i << " fell through to \"" << fallback << "\"\n";
             continue;
         }
 
         for (unsigned j = 0; j < i; ++j)
         {
-            if (seen[j] != nullptr && std::strcmp(seen[j], name) == 0)
+            if (seen[j] != nullptr && th::same_text(seen[j], name))
             {
                 th::report_failure("two enumerators share a name", __FILE__, __LINE__);
-                std::printf("    values %u and %u are both \"%s\"\n", j, i, name);
+                std::cout << "    values " << j << " and " << i << " are both \"" << name
+                          << "\"\n";
             }
         }
         seen[i] = name;
@@ -58,7 +57,7 @@ TEST(to_string_names_every_packet_type)
     check_names<PacketType>([](PacketType t) { return to_string(t); }, 15u, "UNKNOWN");
 
     // A value off the end of the enumeration still has to be printable.
-    CHECK(std::strcmp(to_string(static_cast<PacketType>(15)), "UNKNOWN") == 0);
+    CHECK(th::same_text(to_string(static_cast<PacketType>(15)), "UNKNOWN"));
 }
 
 TEST(to_string_names_every_connack_code)
@@ -66,7 +65,7 @@ TEST(to_string_names_every_connack_code)
     check_names<ConnackCode>([](ConnackCode c) { return to_string(c); }, 6u,
                              "Unknown CONNACK code");
 
-    CHECK(std::strcmp(to_string(static_cast<ConnackCode>(6)), "Unknown CONNACK code") == 0);
+    CHECK(th::same_text(to_string(static_cast<ConnackCode>(6)), "Unknown CONNACK code"));
 }
 
 TEST(to_string_names_every_error)
@@ -74,22 +73,22 @@ TEST(to_string_names_every_error)
     // Ok(0) through Reentrant(22).
     check_names<Error>([](Error e) { return to_string(e); }, 23u, "Unknown");
 
-    CHECK(std::strcmp(to_string(static_cast<Error>(23)), "Unknown") == 0);
+    CHECK(th::same_text(to_string(static_cast<Error>(23)), "Unknown"));
 
     // Spot-check that the mapping is the right way round rather than merely
     // dense -- check_names would be satisfied by 22 distinct wrong answers.
-    CHECK(std::strcmp(to_string(Error::Ok), "Ok") == 0);
-    CHECK(std::strcmp(to_string(Error::TxQueueFull), "TxQueueFull") == 0);
-    CHECK(std::strcmp(to_string(Error::TransportClosed), "TransportClosed") == 0);
+    CHECK(th::same_text(to_string(Error::Ok), "Ok"));
+    CHECK(th::same_text(to_string(Error::TxQueueFull), "TxQueueFull"));
+    CHECK(th::same_text(to_string(Error::TransportClosed), "TransportClosed"));
 }
 
 TEST(to_string_names_every_state)
 {
     check_names<State>([](State s) { return to_string(s); }, 5u, "Unknown");
 
-    CHECK(std::strcmp(to_string(static_cast<State>(5)), "Unknown") == 0);
-    CHECK(std::strcmp(to_string(State::Idle), "Idle") == 0);
-    CHECK(std::strcmp(to_string(State::Connected), "Connected") == 0);
+    CHECK(th::same_text(to_string(static_cast<State>(5)), "Unknown"));
+    CHECK(th::same_text(to_string(State::Idle), "Idle"));
+    CHECK(th::same_text(to_string(State::Connected), "Connected"));
 }
 
 TEST(is_retryable_covers_only_the_flow_control_codes)
@@ -105,7 +104,7 @@ TEST(is_retryable_covers_only_the_flow_control_codes)
         if (is_retryable(e))
         {
             th::report_failure("non-flow-control code reported retryable", __FILE__, __LINE__);
-            std::printf("    %s\n", to_string(e));
+            std::cout << "    " << to_string(e) << '\n';
         }
     }
 }

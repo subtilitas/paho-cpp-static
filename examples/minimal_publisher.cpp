@@ -8,9 +8,9 @@
 // the same code shape works unchanged on a microcontroller once you swap the
 // transport.
 
-#include <cstdio>
-#include <cstdlib>
+#include <iostream>
 
+#include "cli.hpp"
 #include "mqtt/client.hpp"
 #include "posix_transport.hpp"
 
@@ -34,15 +34,20 @@ bool g_done = false;
 
 int main(int argc, char** argv)
 {
-    const char*    host = (argc > 1) ? argv[1] : "127.0.0.1";
-    const uint16_t port = static_cast<uint16_t>((argc > 2) ? std::atoi(argv[2]) : 1883);
+    const char* host = (argc > 1) ? argv[1] : "127.0.0.1";
+    uint16_t    port = 1883;
+    if ((argc > 2) && !example::parse_port(argv[2], port))
+    {
+        std::cerr << "'" << argv[2] << "' is not a port number from 1 to 65535\n";
+        return 2;
+    }
 
     static example::PosixClock     clock;
     static example::PosixTransport transport(host, port);
     static mqtt::Client<Config>    client{transport, clock};
 
     static auto on_delivered = [](uint16_t id) {
-        std::printf("delivered, packet id %u\n", id);
+        std::cout << "delivered, packet id " << id << '\n';
         g_done = true;
     };
     client.on_delivery_complete(on_delivered);
@@ -61,7 +66,7 @@ int main(int argc, char** argv)
         const mqtt::Error rc = client.step();
         if (rc != mqtt::Error::Ok)
         {
-            std::printf("session ended: %s\n", mqtt::to_string(rc));
+            std::cout << "session ended: " << mqtt::to_string(rc) << '\n';
             return 1;
         }
 
